@@ -5,7 +5,8 @@ local function check(value,stage,base,overlay,period,full)
     assert(s.known and s.stage==stage)
     assert(math.abs(s.base_fill-base)<1e-8 and math.abs(s.overlay_fill-overlay)<1e-8,
         'Wrong fill at '..value)
-    assert(s.pulse_period==period and s.full_flash==full)
+    assert(s.blink_stage==(stage>0 and stage or nil) and s.full_flash==full)
+    assert(period==nil or tiers.default_periods[stage]==period)
     assert(s.overlay_alpha>=230 and s.overlay_alpha<=242)
 end
 check(0,0,0,0,nil,false)
@@ -22,4 +23,6 @@ check(5000,3,1,0,.3,true)
 assert(not tiers.sample(nil).known)
 assert(not tiers.sample(0/0).known)
 assert(not tiers.sample(math.huge).known)
-print('PetBar two-layer TP stage model: PASS')
+assert(tiers.default_periods[1]==.8 and tiers.default_periods[2]==.4 and
+    tiers.default_periods[3]==.3)
+print('PetBar two-layer alpha-flash stage model: PASS')
