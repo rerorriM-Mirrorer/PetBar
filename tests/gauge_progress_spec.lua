@@ -63,34 +63,39 @@ g:move(20,40)
 assert(g.trail_value==.3,'damage trail must also finish without more packets')
 assert(g.trough[3]._x+g.trough[3]._width==20+260,
     'right cap must end at requested width')
-g:set_transition(.5,1)
-assert(g.release_mask[1].seen and g.release_mask[2].seen and g.release_mask[3].seen)
-assert(g.release_mask[1].a==128,'white silhouette must preserve fade opacity')
-assert(g.release_mask[3]._x+g.release_mask[3]._width==20+260)
-local white_stroke=g.fill[1].r
-assert(white_stroke==255,'all visible fill pieces should be whitened')
+-- A normal appearance/disappearance fade only changes alpha; preserve color.
+g:set_transition(.5,0)
+assert(g.fill[1].a==128 and g.fill[1].r==120)
+assert(g.trough[1].a==128)
+assert(not g.release_mask[1].seen,'normal fade must never display white mask')
 g:move(20,40)
 g:set_transition(1,0)
-assert(not g.release_mask[1].seen)
-assert(g.release_mask[1].a==128 or g.release_mask[1].a==0,
-    'inactive white mask must never render')
+assert(g.fill[1].a==255 and g.fill[1].r==120)
 g:destroy()
 
 clock=0
-local flash=gauge.new(260,c,{clock=now,full_flash_enabled=true})
-flash:show()
-flash:set_value(1,true)
-flash:set_pulse(true,{mode='fullflash',period=.2,
-    target={red=0,green=0,blue=0}})
-clock=.15
-flash:move(0,0)
-assert(flash.flash_on and flash.flash_fill[1].seen)
-assert(flash.flash_fill[1].r==0)
-clock=.25
-flash:move(0,0)
-assert(not flash.flash_on and not flash.flash_fill[1].seen)
-flash:set_pulse(false)
-flash:move(0,0)
-assert(not flash.flash_fill[1].seen)
-flash:destroy()
-print('PetBar native gauge frame and full-flash smoke: PASS')
+local blink=gauge.new(260,c,{clock=now})
+blink:show()
+blink:set_value(1,true)
+blink:set_blink(.4) -- 0.4s full cycle: 0.2 visible, then 0.2 hidden.
+clock=.1
+blink:move(0,0)
+blink:set_transition(1,0)
+assert(blink.blink_alpha==1 and blink.fill[1].a==255)
+assert(blink.trough[1].a==255)
+clock=.3
+blink:move(0,0)
+blink:set_transition(1,0)
+assert(blink.blink_alpha==0 and blink.fill[1].a==0)
+assert(blink.trough[1].a==0,'entire TP underlay must be transparent')
+clock=.5
+blink:move(0,0)
+blink:set_transition(.5,0)
+assert(blink.fill[1].a==128,'blink must multiply regular lifecycle fade')
+assert(blink.trough[1].a==128)
+blink:set_blink(nil)
+blink:move(0,0)
+blink:set_transition(1,0)
+assert(blink.fill[1].a==255 and blink.trough[1].a==255)
+blink:destroy()
+print('PetBar gauge native cap, regular fade and alpha blink: PASS')
