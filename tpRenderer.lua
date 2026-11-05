@@ -71,6 +71,13 @@ function methods:sync()
         if show_overlay then overlay:show() else overlay:hide() end
     end
 end
+-- The base and its semitransparent overlay must share a single fade amount.
+function methods:set_transition(opacity,whitening)
+    for _,bar in ipairs(self.bars) do
+        bar:set_transition(opacity,whitening)
+    end
+end
+
 function methods:move(x,y)
     self.x,self.y=x,y
     for _,bar in ipairs(self.bars) do bar:move(x,y) end
