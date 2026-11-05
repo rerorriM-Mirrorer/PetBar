@@ -35,6 +35,9 @@
 | `76011d9` | Mocked Windower scenario test for entrance, release, death and TP number |
 | `e1e5567` | CI branch coverage for Lua 5.1 parsing and model checks |
 | `de104a7` | README usage and cumulative changelog |
+| `8c1c3e1` | Add neutral white mask to cover colored native gauge artwork during Release |
+| `076c154` | Regression checks for white-mask alpha, geometry and restoration |
+| `f64d212` | Log outgoing pet action category/param when debug is enabled for in-game verification |
 | Final documentation commit and remote head are reported in the delivery handoff. |
 
 ### Future design requests — explicitly deferred
