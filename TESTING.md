@@ -1,5 +1,25 @@
 # PetBar TESTING.md
 
+## Current Development Status — Dormant Pet Fade Infrastructure (2026-11-04)
+
+- **Repository:** `rerorriM-Mirrorer/PetBar`; isolated `dev/pet-fade-infrastructure-2026-11-04` branch from the exact Test 2 head `5036b97f1770e3c29f91bcb703236e6882915ba5`.
+- **User request:** Stand by on integrating the new visual behavior while Test 2 is being tested; prepare only non-invasive fade infrastructure.
+- **New standalone modules:** `petTransitions.lua` (pet identity-aware entrance/exit state machine) and `transitionColors.lua` (pure RGBA fade and white-tint transformation, with **text stroke/outline** treated explicitly). They are **not imported** by the running `petbar.lua` entry point; the visible PetBar Test 2 remains unchanged.
+- **Intent:** New pet fade in; death normal-color fade out; independently verified Release whites every image/text/stroke and fades out; missing/unclassified pet uses normal-color fade, avoiding false Release classifications; cutscene/zone/unload immediate cleanup.
+- **Local simulated verification:** `texlua tests/transitions_spec.lua` **PASS** using local Lua 5.3, with synthetic timestamps and palette samples. This is **not Lua 5.1 verification, Windower, or live in-game testing**.
+- **Next:** Continue Test 2 gameplay tests and gather release-vs-death recognition evidence. Only later wire transitions into `petbar.lua`, preserve pet/TP snapshot during exit, and propagate alpha/tint to all native sprites, number texts, text strokes, and detached ghost effects.
+- **No installable fade build has been released.** Test 2 branch and `main` are unchanged. Existing previous status and testing history preserved below.
+
+### Source and patch register (dormant groundwork)
+
+- `ed6ad09` — pure transition timelines, pet-identity handling and explicit death/release reasons.
+- `261e356` — independent tint/alpha transformer for texture, text, **text stroke**.
+- `c80b8c2` — deterministic smoke tests for appearance, departure, release whitening, interruption, cleanup.
+- `f1c40f1` — integration boundaries and documentation.
+- Final documentation and remote head to be reported in handoff.
+
+---
+
 ## Current Development Status — SMN Test 2 (2026-11-04, America/Chicago)
 
 - **Repository / working branch:** `rerorriM-Mirrorer/PetBar` / `dev/smn-test2-2026-11-04`; forked from Test 1 commit `1f0a79ae649ec854829014c06a8df6a1774321e8`. `main` and Test 1 stay unchanged.
