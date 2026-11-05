@@ -3,7 +3,7 @@
 -- preserve EnemyBar2's native animation behavior and attribution.
 _addon.name='PetBar'
 _addon.author='A'
-_addon.version='0.3.0-test3'
+_addon.version='0.4.0-test4'
 _addon.language='English'
 _addon.commands={'pb','petbar'}
 
@@ -24,7 +24,8 @@ local is_avatar=summon_kinds.is_summon
 local defaults={
     visible=true,locked=false,layout='vertical',
     pos={x=-1,y=-1},width=260,hp_width=0,tp_width=0,
-    gap=6,scale=1,font_size=13,tp_flash_target='white',
+    gap=6,scale=1,font_size=13,
+    tp_flash_1000=.8,tp_flash_2000=.4,tp_flash_3000=.3,
     offsets={hp={x=0,y=0},tp={x=0,y=0},
         name={x=0,y=0},tptext={x=0,y=0}},
     effects=pet_animation.defaults()
@@ -42,6 +43,17 @@ for key,initial in pairs(defaults.offsets) do
 end
 settings.hp_width=tonumber(settings.hp_width) or 0
 settings.tp_width=tonumber(settings.tp_width) or 0
+-- Existing per-character coordinates and effect values are authoritative.
+-- Old tp_flash_target XML values remain harmless; they are not overwritten.
+for _,level in ipairs({'1000','2000','3000'}) do
+    local key='tp_flash_'..level
+    local n=tonumber(settings[key])
+    local original=defaults[key]
+    settings[key]=n and n==n and n>=.1 and n<=5 and n or original
+end
+local function tp_periods()
+    return {settings.tp_flash_1000,settings.tp_flash_2000,settings.tp_flash_3000}
+end
 local s={pet=nil,pet_id=nil,pet_index=nil,hpp=nil,tp=nil,
     last_packet_hp=-999,death_at=nil,last_scan=-999,preview=nil,
     in_cs=false,stopping=false,drag=nil,ctrl={},ctrl_down=false,
@@ -171,7 +183,7 @@ local function rebuild()
     width,tp_width=g.hp_width,g.tp_width
     -- Windower image objects stack by creation order. Create TP first so
     -- HP and its native end caps always draw above the overlapping TP gauge.
-    tp=tp_renderer.new(tp_width,options,nil,settings.tp_flash_target)
+    tp=tp_renderer.new(tp_width,options,nil,tp_periods())
     hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
     caption=make_text(label_palette.red,label_palette.green,label_palette.blue,true)
     tp_label=make_text(tp_palette.red,tp_palette.green,tp_palette.blue,false)
@@ -407,7 +419,8 @@ local function help()
     line('preview [show|hit|heal|tp|off]','Eight-second live HUD effects preview')
     line('preview fade','Preview normal exit (also preview death/release)')
     line('preview tp [0..3000]','Inspect full-width 1000/2000/3000 TP passes')
-    line('tpflash <white|black>','Choose full-TP flash color at 3000')
+    line('tpflashperiod [1000|2000|3000|all] [seconds]',
+        'Get/set full visible+transparent cycle (0.1..5 seconds)')
     windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
     line('layout <vertical|horizontal>','Equal-width HP/TP; vertical default')
     line('width <60..800>','Set both gauges; reset individual overrides')
@@ -436,8 +449,10 @@ local function status()
     msg('Avatar '..(s.pet or 'none')..' | HP '..tostring(s.hpp~=nil and s.hpp or '--')..
         '% | TP '..tostring(s.tp or '--')..
         ' | cutscene '..tostring(s.in_cs))
-    msg('TP full flash '..tostring(settings.tp_flash_target or 'white')..
-        ' | 2 layers, 93% overlay, progressive 1000/2000 pulses')
+    msg('TP alpha flash cycles: 1000='..settings.tp_flash_1000..
+        's, 2000='..settings.tp_flash_2000..
+        's, 3000='..settings.tp_flash_3000..
+        's (full on/off period)')
     msg('HP animation '..tostring(settings.effects.animation_duration)..
         's, trail '..tostring(settings.effects.trail_delay)..'s + '..
         tostring(settings.effects.trail_duration)..'s, shake '..
@@ -484,15 +499,42 @@ local function command(cmd,...)
         msg('Release requested; waiting for pet departure')
         return
     end
-    if cmd=='tpflash' then
-        local choice=a[1] and a[1]:lower()
-        if choice~='white' and choice~='black' then
-            msg('Use //pb tpflash <white|black>.',true);return
+    if cmd=='tpflashperiod' or cmd=='tpperiod' then
+        local band=a[1] and a[1]:lower()
+        local all=(not band or band=='all')
+        if not all and band~='1000' and band~='2000' and band~='3000' then
+            msg('Use //pb tpflashperiod [1000|2000|3000|all] [0.1..5].',true)
+            return
         end
-        settings.tp_flash_target=choice
+        if not a[2] then
+            if all then
+                msg('TP flash period (full cycle): 1000='..settings.tp_flash_1000..
+                    's, 2000='..settings.tp_flash_2000..
+                    's, 3000='..settings.tp_flash_3000..'s')
+            else
+                msg(band..' TP full flash cycle '..settings['tp_flash_'..band]..'s')
+            end
+            return
+        end
+        local seconds=tonumber(a[2])
+        if not seconds or seconds~=seconds or seconds<.1 or seconds>5 then
+            msg('Flash cycle must be 0.1..5 seconds.',true)
+            return
+        end
+        if all then
+            for _,key in ipairs({'1000','2000','3000'}) do
+                settings['tp_flash_'..key]=seconds
+            end
+        else
+            settings['tp_flash_'..band]=seconds
+        end
         save()
-        tp:set_flash_target(choice)
-        msg('3000 TP full flash: '..choice)
+        tp:set_flash_periods(tp_periods())
+        msg('TP flash cycle '..(all and 'all' or band)..': '..seconds..'s')
+        return
+    end
+    if cmd=='tpflash' then
+        msg('TP color flashing retired; use //pb tpflashperiod.',true)
         return
     end
     if cmd=='defaults' then
