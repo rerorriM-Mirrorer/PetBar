@@ -169,8 +169,10 @@ local function rebuild()
     local uw,uh=dimensions()
     local g=layout_model.calculate(settings,uw,uh)
     width,tp_width=g.hp_width,g.tp_width
-    hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
+    -- Windower image objects stack by creation order. Create TP first so
+    -- HP and its native end caps always draw above the overlapping TP gauge.
     tp=tp_renderer.new(tp_width,options,nil,settings.tp_flash_target)
+    hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
     caption=make_text(label_palette.red,label_palette.green,label_palette.blue,true)
     tp_label=make_text(tp_palette.red,tp_palette.green,tp_palette.blue,false)
     position()
