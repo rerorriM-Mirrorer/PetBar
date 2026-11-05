@@ -1,5 +1,5 @@
--- Dormant fade lifecycle; deliberately NOT imported by petbar.lua.
--- Callers must classify observed death/release before departing.
+ -- Pet lifecycle animation: identical color-preserving entrance and exit fades.
+-- Reason labels are retained for diagnostics only; they do not change the look.
 local transitions = {}
 local methods = {}
 methods.__index = methods
@@ -23,8 +23,6 @@ function transitions.new(options)
         clock = options.clock or os.clock,
         fade_in = duration(options.fade_in, .24),
         fade_out = duration(options.fade_out, .4),
-        release_fade_out = duration(options.release_fade_out, .48),
-        release_white = duration(options.release_white, .12),
         phase = 'hidden', identity = nil, reason = nil,
         started_at = 0, from_alpha = 0,
     }, methods)
@@ -40,9 +38,8 @@ function methods:sample(now)
     elseif self.phase == 'visible' then
         alpha = 1
     elseif self.phase == 'leaving' then
-        local seconds = self.reason == 'release' and self.release_fade_out or self.fade_out
+        local seconds = self.fade_out
         alpha = self.from_alpha * (1 - progress(age, seconds))
-        if self.reason == 'release' then whiten = progress(age, self.release_white) end
         if age + 1e-9 >= seconds then
             self.phase, self.identity, self.reason = 'hidden', nil, nil
             alpha, whiten = 0, 0
@@ -71,7 +68,7 @@ function methods:depart(reason, now)
     now = now or self.clock()
     local current = self:sample(now)
     if not current.identity or self.phase == 'leaving' then return false end
-    -- Never whiten on an unverified disappearance or an observed death.
+    -- Keep the reason for debugging, not for a different fade.
     if reason ~= 'release' and reason ~= 'death' then reason = 'missing' end
     self.phase, self.reason = 'leaving', reason
     self.started_at, self.from_alpha = now, current.alpha
