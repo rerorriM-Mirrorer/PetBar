@@ -33,6 +33,9 @@ function gauge.new(width, color, options)
         ghost_hit=options.ghost_hit or false,
         ghost_options=animation_settings.snapshot(options.ghost_options or options.effects or options),
         trail_delay=options.trail_delay or 1.5, trail_duration=options.trail_duration or .45,
+        fill_only=options.fill_only or false, pulse_active=false,
+        pulse_strength=options.pulse_strength or 0,
+        pulse_period=options.pulse_period or .6,
     }, methods)
     if options.effects then self.motion=health_motion.new(options.effects,self.clock) end
     -- The shell is deliberately neutral, independent of the resource tint.
@@ -200,6 +203,17 @@ function methods:layout_fill()
             p:alpha(self.active_trail_alpha)
         end
     end
+    -- Completed TP tiers retain their own subtle pulse under newer overlays.
+    -- HP never opts into pulse_strength; this cannot change its native effects.
+    if self.pulse_active and self.pulse_strength>0 and
+        not (self.feedback and self.feedback.healing) then
+        local phase=(1-math.cos(2*math.pi*self.clock()/self.pulse_period))/2
+        local glow=health_motion.mix(self.color,{red=210,green=238,blue=255},
+            self.pulse_strength*phase)
+        for _,part in ipairs(self.fill) do
+            part:color(glow.red,glow.green,glow.blue)
+        end
+    end
     self:layout_trail_glow()
     self:layout_heal_glow()
     self:refresh_visibility()
@@ -273,7 +287,7 @@ end
 
 function methods:refresh_visibility()
     for _, part in ipairs(self.trough) do
-        part:visible(self.visible and part:width() > 0)
+        part:visible(self.visible and not self.fill_only and part:width() > 0)
     end
     local white=self.critical_fill and self.feedback and self.feedback.critical and self.feedback.white==1
     for _, part in ipairs(self.fill) do
@@ -297,6 +311,10 @@ function methods:refresh_visibility()
         part:visible(self.visible and self.feedback.healing and
             (self.heal_glow_width or 0)>0 and part:width()>0 and enabled)
     end
+end
+
+function methods:set_pulse(active)
+    self.pulse_active=active==true
 end
 
 function methods:show()
