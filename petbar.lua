@@ -254,7 +254,7 @@ local function frame()
     local tv=tp:text_value(now)
     caption:text((s.preview and 'Carbuncle' or s.pet or 'Avatar')..
         ': '..rnd(clamp(hv,0,100))..'%')
-    tp_label:text('TP '..(tv and tostring(rnd(clamp(tv,0,3000))) or '--'))
+    tp_label:text(tv and tostring(rnd(clamp(tv,0,3000))) or '--')
 end
 local function preview(kind,raw_tp)
     kind=kind or 'show'
