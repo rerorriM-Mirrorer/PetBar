@@ -67,6 +67,14 @@ function gauge.new(width, color, options)
         image('fill_left', color), image('fill_mid', color),
         image('fill_right', color),
     }
+    -- Native fill/trough art has its own baked colors. At release, a neutral
+    -- silhouette covers their tinted end caps so the *whole* bar reads white.
+    local white={red=255,green=255,blue=255,alpha=0}
+    self.release_mask={
+        image('ghost_fill_left',white),
+        image('ghost_fill_mid',white),
+        image('ghost_fill_right',white),
+    }
     -- A neutral silhouette is needed for full-TP white/black flashes.
     -- The regular native fill sprite has a cyan cast even when tinted white.
     if self.full_flash_enabled then
@@ -114,7 +122,10 @@ function methods:set_transition(opacity,whitening)
     self:restore_transition()
     opacity=math.max(0,math.min(1,tonumber(opacity) or 1))
     whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
-    if opacity==1 and whitening==0 then return end
+    if opacity==1 and whitening==0 then
+        for _,part in ipairs(self.release_mask) do part:visible(false) end
+        return
+    end
     local originals={}
     for _,name in ipairs(transition_groups) do
         for _,part in ipairs(self[name] or {}) do
@@ -131,6 +142,11 @@ function methods:set_transition(opacity,whitening)
         end
     end
     self.transition_original=originals
+    local mask_alpha=math.floor(255*opacity*whitening+.5)
+    for _,part in ipairs(self.release_mask) do
+        part:alpha(mask_alpha)
+        part:visible(self.visible and mask_alpha>0)
+    end
 end
 
 function methods:move(x, y)
@@ -148,6 +164,12 @@ function methods:move(x, y)
     self.trough[2]:size(self.width-12, 12)
     self.trough[3]:pos(sx+self.width-6, y+shake)
     self.trough[3]:size(6, 12)
+    for i,part in ipairs(self.release_mask) do
+        local px=i==1 and 0 or i==2 and 6 or self.width-6
+        local pw=i==2 and self.width-12 or 6
+        part:pos(sx+px,y+shake)
+        part:size(pw,12)
+    end
     self:layout_fill()
 end
 
@@ -357,6 +379,9 @@ function methods:trail_visible()
 end
 
 function methods:refresh_visibility()
+    for _,part in ipairs(self.release_mask) do
+        if not self.visible then part:visible(false) end
+    end
     for _, part in ipairs(self.trough) do
         part:visible(self.visible and not self.fill_only and part:width() > 0)
     end
@@ -424,6 +449,7 @@ function methods:destroy()
     self:restore_transition()
     for _, part in ipairs(self.trough) do part:destroy() end
     for _, part in ipairs(self.fill) do part:destroy() end
+    for _,part in ipairs(self.release_mask) do part:destroy() end
     for _, part in ipairs(self.trail or {}) do part:destroy() end
     for _, part in ipairs(self.trail_glow or {}) do part:destroy() end
     for _, part in ipairs(self.critical_fill or {}) do part:destroy() end
