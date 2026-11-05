@@ -128,7 +128,7 @@ local function position()
     local available=settings.layout=='horizontal' and
         math.floor((uw-24-gap)/2) or uw-24
     width=math.max(16,math.min(requested,available))
-    total_w=settings.layout=='horizontal' and (2*(width+2)+gap) or width+2
+    total_w=settings.layout=='horizontal' and (2*width+gap) or width
     local bar_h=settings.layout=='horizontal' and 12 or 24+gap
     total_h=bar_h+math.max(8,rnd(settings.font_size*scale))+8
     local base_x=math.floor((uw-total_w)/2)
@@ -139,7 +139,7 @@ local function position()
     y=clamp(rnd(py and py>=0 and py or base_y),0,math.max(0,uh-total_h))
     s.ui_w,s.ui_h=uw,uh
     hp:move(x,y)
-    tp:move(settings.layout=='horizontal' and x+width+2+gap or x,
+    tp:move(settings.layout=='horizontal' and x+width+gap or x,
         settings.layout=='horizontal' and y or y+12+gap)
     caption:pos(x+3,y+bar_h+2)
     tp_label:pos(x+total_w-rnd(75*scale),y+bar_h+2)

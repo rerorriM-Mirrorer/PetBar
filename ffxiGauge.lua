@@ -25,7 +25,7 @@ end
 function gauge.new(width, color, options)
     options = options or {}
     local self = setmetatable({
-        width=math.max(16, width+2), x=0, y=0, value=1, visible=false,
+        width=math.max(16, width), x=0, y=0, value=1, visible=false,
         duration=options.animation_duration or 0,
         clock=options.clock or os.clock, target_value=1,
         slide_duration=options.animation_duration or 0, color=color,
