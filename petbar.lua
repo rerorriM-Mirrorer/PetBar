@@ -3,7 +3,7 @@
 -- preserve EnemyBar2's native animation behavior and attribution.
 _addon.name='PetBar'
 _addon.author='A'
-_addon.version='0.2.0-test2'
+_addon.version='0.3.0-test3'
 _addon.language='English'
 _addon.commands={'pb','petbar'}
 
@@ -16,6 +16,9 @@ local anim=require('animationSettings')
 local layout_model=require('layoutModel')
 local tp_renderer=require('tpRenderer')
 local pet_animation=require('petAnimationPreset')
+local transitions=require('petTransitions')
+local transition_colors=require('transitionColors')
+local release_detector_class=require('petReleaseDetector')
 
 local summon_kinds=require('summonKinds')
 local is_avatar=summon_kinds.is_summon
@@ -47,6 +50,11 @@ local s={pet=nil,pet_id=nil,pet_index=nil,hpp=nil,tp=nil,
 local hp,tp,caption,tp_label
 local x,y,width,tp_width,total_w,total_h=0,0,260,260,260,50
 local visible=false
+local fade=transitions.new()
+local releases=release_detector_class.new()
+local label_palette={red=245,green=238,blue=242,alpha=255}
+local tp_palette={red=177,green=211,blue=255,alpha=255}
+local stroke_palette={red=12,green=12,blue=12,alpha=180}
 
 local function clamp(v,lo,hi) return math.max(lo,math.min(hi,v)) end
 local function rnd(v) return math.floor(v+.5) end
@@ -74,10 +82,28 @@ local function pet_entity(p)
     end
     return pet and is_avatar(pet.name) and pet or nil
 end
-local function reset(clear)
+local function reset(clear,retain_exit)
     s.pet,s.pet_id,s.pet_index,s.hpp,s.tp,s.death_at=nil,nil,nil,nil,nil,nil
     s.last_packet_hp=-999
+    releases:clear()
+    if not retain_exit then
+        fade:clear()
+        s.departure=nil
+        s.fading_id=nil
+    end
     if clear then gauge.clear_ghosts() end
+end
+-- Keep the last numbers and pet identity while the actual pet is already gone.
+-- The release whiten is never inferred from entity disappearance by itself.
+local function depart(reason,now)
+    if not s.pet_index then return end
+    local identity=s.pet_id
+    s.departure={pet=s.pet,hpp=s.hpp,tp=s.tp}
+    s.last_departure=reason
+    if reason=='release' then gauge.clear_ghosts() end
+    fade:depart(reason,now)
+    s.fading_id=identity
+    reset(false,true)
 end
 local function options(istp)
     local e=anim.snapshot(settings.effects)
@@ -149,8 +175,8 @@ local function rebuild()
     width,tp_width=g.hp_width,g.tp_width
     hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
     tp=tp_renderer.new(tp_width,options,nil,settings.tp_flash_target)
-    caption=make_text(245,238,242,true)
-    tp_label=make_text(177,211,255,false)
+    caption=make_text(label_palette.red,label_palette.green,label_palette.blue,true)
+    tp_label=make_text(tp_palette.red,tp_palette.green,tp_palette.blue,false)
     position()
     hp:set_value((s.hpp or 100)/100,true)
     tp:set_value(s.tp,true)
@@ -169,31 +195,44 @@ local function show(yes)
 end
 local function scan(now)
     local info=windower.ffxi.get_info()
-    local p=info and info.logged_in and windower.ffxi.get_player()
-    local pet=p and pet_entity(p)
-    if pet and pet.index and pet.id then
-        if pet.id~=s.pet_id or pet.index~=s.pet_index then
-            reset(true)
-            s.pet,s.pet_index,s.pet_id=pet.name,pet.index,pet.id
-            s.hpp=clamp(tonumber(pet.hpp) or 100,0,100)
+    local player=info and info.logged_in and windower.ffxi.get_player()
+    local observed=player and pet_entity(player)
+    -- After a confirmed death the entity can linger briefly at 0 HP.
+    -- Don't repeatedly fade it back in until it truly disappears.
+    if not observed then
+        s.fading_id=nil
+    elseif s.fading_id==observed.id then
+        observed=nil
+    end
+    if observed and observed.index and observed.id then
+        if observed.id~=s.pet_id or observed.index~=s.pet_index then
+            reset(true,true)
+            s.pet,s.pet_index,s.pet_id=observed.name,observed.index,observed.id
+            s.departure=nil
+            s.fading_id=nil
+            s.hpp=clamp(tonumber(observed.hpp) or 100,0,100)
             hp:set_value(s.hpp/100,true)
             tp:set_value(nil,true)
-            if settings.debug then msg('Avatar acquired: '..pet.name) end
+            fade:appear(observed.id,now)
+            if settings.debug then msg('Summon acquired: '..observed.name) end
         else
-            if now-s.last_packet_hp>.30 and type(pet.hpp)=='number' then
-                local v=clamp(pet.hpp,0,100)
-                if v~=s.hpp then
-                    s.hpp=v
-                    hp:set_value(v/100,false)
+            if now-s.last_packet_hp>.30 and type(observed.hpp)=='number' then
+                local current=clamp(observed.hpp,0,100)
+                if current~=s.hpp then
+                    s.hpp=current
+                    hp:set_value(current/100,false)
                 end
             end
         end
-        if s.hpp==0 and not s.death_at then s.death_at=now end
-        if s.hpp~=0 then s.death_at=nil end
-    elseif s.pet_index and (s.hpp~=0 or not s.death_at or now-s.death_at>.65) then
-        reset(false)
+        if s.hpp==0 then
+            -- Death takes precedence even when Release was requested.
+            depart('death',now)
+        end
+    elseif s.pet_index then
+        local reason=releases:reason(s.pet_id,s.hpp,now)
+        if settings.debug then msg('Summon left: '..reason) end
+        depart(reason,now)
     end
-    if s.death_at and now-s.death_at>.65 then reset(false) end
 end
 local function on_pet_packet(id,data)
     if id~=0x067 and id~=0x068 then return end
@@ -229,6 +268,22 @@ local function on_pet_packet(id,data)
         tp:set_value(value,prev==nil or value<prev)
     end
 end
+-- Restore both foreground and stroke from their immutable palettes.
+local function color_labels(sample)
+    local name_color,stroke=transition_colors.label(
+        label_palette,stroke_palette,sample)
+    caption:color(name_color.red,name_color.green,name_color.blue)
+    caption:alpha(name_color.alpha)
+    caption:stroke_color(stroke.red,stroke.green,stroke.blue)
+    caption:stroke_alpha(stroke.alpha)
+    local number_color,number_stroke=transition_colors.label(
+        tp_palette,stroke_palette,sample)
+    tp_label:color(number_color.red,number_color.green,number_color.blue)
+    tp_label:alpha(number_color.alpha)
+    tp_label:stroke_color(number_stroke.red,number_stroke.green,number_stroke.blue)
+    tp_label:stroke_alpha(number_stroke.alpha)
+end
+
 local function frame()
     if not hp then return end
     local now=os.clock()
@@ -237,24 +292,43 @@ local function frame()
     if uw~=s.ui_w or uh~=s.ui_h then rebuild() end
     if s.preview and now>=s.preview.expires then
         s.preview=nil
-        hp:set_value((s.hpp or 100)/100,true)
-        tp:set_value(s.tp,true)
+        if fade:sample(now).identity=='preview' then
+            fade:depart('missing',now)
+        end
+        -- Keep the displayed preview values during its exit.
+        if s.pet_index then
+            s.last_scan=-999
+        end
     end
-    if now-s.last_scan>=.10 and not s.preview then
-        s.last_scan=now;scan(now)
+    if now-s.last_scan>=.10 and not s.preview and not s.in_cs then
+        s.last_scan=now
+        scan(now)
     end
+    local sample=fade:sample(now)
+    if sample.phase=='hidden' then s.departure=nil end
     local should_show=settings.visible and not s.in_cs and
-        (s.preview~=nil or s.pet_index~=nil)
+        sample.phase~='hidden'
     show(should_show)
     if not should_show then return end
-    -- EnemyBar2 samples time-based shake, pulse, loss and recovery every frame.
+    -- Native gauge color layers independently rebuild every frame before
+    -- the full-unit fade is applied, preserving HP loss and TP pulses.
     hp:move(hp.x,hp.y)
     tp:move(tp.x,tp.y)
-    local hv=hp.motion and hp.motion:sample().text_value*100 or s.hpp or 0
-    local tv=tp:text_value(now)
-    caption:text((s.preview and 'Carbuncle' or s.pet or 'Avatar')..
-        ': '..rnd(clamp(hv,0,100))..'%')
-    tp_label:text(tv and tostring(rnd(clamp(tv,0,3000))) or '--')
+    local remembered=s.departure
+    local hp_readout=remembered and remembered.hpp or s.hpp
+    local hv=remembered and hp_readout or
+        (hp.motion and hp.motion:sample().text_value*100 or s.hpp)
+    local tv=remembered and remembered.tp or tp:text_value(now)
+    if s.preview then
+        caption:text('Carbuncle: '..rnd(clamp(hv or 100,0,100))..'%')
+    else
+        caption:text((remembered and remembered.pet or s.pet or 'Avatar')..
+            ': '..rnd(clamp(hv or 0,0,100))..'%')
+    end
+    tp_label:text(tv~=nil and tostring(rnd(clamp(tv,0,3000))) or '--')
+    hp:set_transition(sample.alpha,sample.whiten)
+    tp:set_transition(sample.alpha,sample.whiten)
+    color_labels(sample)
 end
 local function preview(kind,raw_tp)
     kind=kind or 'show'
@@ -302,6 +376,7 @@ local function help()
     line('status','Version, avatar HP/TP, layout and position')
     line('show | hide | auto','Automatic pet-conditional visibility or hide')
     line('preview [show|hit|heal|tp|off]','Eight-second live HUD effects preview')
+    line('preview release | death','Preview release-white or normal death fade')
     line('preview tp [0..3000]','Inspect full-width 1000/2000/3000 TP passes')
     line('tpflash <white|black>','Choose full-TP flash color at 3000')
     windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
@@ -321,8 +396,11 @@ local function help()
     line('defaults animations','Opt in to Franklet-derived EnemyBar2 animation settings')
     line('debug [on|off]','Log major avatar changes')
     line('save | restart | unload','Save, or cleanly reload/unload once')
+    line('release','Issue Summoner Release and mark its outgoing intent')
 end
 local function status()
+    msg('Fade '..fade:sample().phase..' | last departure '..
+        tostring(s.last_departure or 'none'))
     msg('v'.._addon.version..' | '..settings.layout..
         ' | '..(settings.visible and 'auto' or 'hidden')..
         ' | '..(settings.locked and 'locked' or 'draggable'))
