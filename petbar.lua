@@ -640,7 +640,13 @@ windower.register_event('outgoing chunk',function(id,original,modified,injected,
     if id~=0x01A or blocked or injected or not s.pet_id then return end
     local ok,packet=pcall(packets.parse,'outgoing',modified or original)
     if not ok or type(packet)~='table' then return end
-    if releases:observe(packet['Category'],packet['Param'],s.pet_id,os.clock())
+    local category,param=packet['Category'],packet['Param']
+    if settings.debug and
+        (tonumber(category)==9 or category=='Job ability usage') then
+        msg('Pet action 0x01A: category='..tostring(category)..
+            ' param='..tostring(param)..' (Release resource ID 90)')
+    end
+    if releases:observe(category,param,s.pet_id,os.clock())
         and settings.debug then
         msg('Release action observed; awaiting disappearance')
     end
