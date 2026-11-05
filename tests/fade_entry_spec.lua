@@ -37,6 +37,8 @@ package.preload.config=function()
     }
 end
 local text_objects={}
+local creation_order={}
+local last_tp_bar=nil
 package.preload.texts=function()
     return {new=function(_,options)
         local obj={visible=false,options=options,content='',stroke={}}
@@ -66,6 +68,7 @@ end
 package.preload.ffxiGauge=function()
     local m={clear_ghosts=function() end,update_ghosts=function() end}
     function m.new(width,color,options)
+        creation_order[#creation_order+1]='HP'
         local bar={width=width,value=1,x=0,y=0,visible=false}
         function bar:move(x,y) self.x=x;self.y=y end
         function bar:set_value(value) self.value=value end
@@ -81,6 +84,7 @@ package.preload.ffxiGauge=function()
 end
 package.preload.tpRenderer=function()
     return {new=function(width)
+        creation_order[#creation_order+1]='TP'
         local o={x=0,y=0,value=nil,visible=false}
         function o:move(x,y) self.x=x;self.y=y end
         function o:set_value(v) self.value=v end
@@ -91,7 +95,8 @@ package.preload.tpRenderer=function()
         function o:set_transition(alpha,white)
             self.fade_alpha=alpha;self.fade_white=white
         end
-        function o:set_flash_target(value) self.flash=value end
+        function o:set_flash_periods(values) self.periods=values end
+        last_tp_bar=o
         return o
     end}
 end
@@ -101,6 +106,18 @@ assert(events['addon command'])
 events.load()
 events.prerender()
 assert(#text_objects==2 and not text_objects[1].visible)
+assert(creation_order[1]=='TP' and creation_order[2]=='HP',
+    'HP renderer must be created last to sit above TP sprites')
+events['addon command']('tpflashperiod')
+events['addon command']('tpflashperiod','1000','0.65')
+assert(last_tp_bar.periods[1]==.65 and last_tp_bar.periods[2]==.4)
+assert(saved[#saved].tp_flash_1000==.65)
+events['addon command']('tpflashperiod','all','0.5')
+assert(last_tp_bar.periods[1]==.5 and last_tp_bar.periods[3]==.5)
+events['addon command']('tpflashperiod','3000','0.24')
+assert(last_tp_bar.periods[3]==.24)
+events['addon command']('tpflash','black') -- deprecated, must not modify state.
+assert(last_tp_bar.periods[3]==.24)
 mob={index=51,id=4001,name='Carbuncle',hpp=99}
 player.mob.pet_index=51
 now=1.2
@@ -175,4 +192,4 @@ events.prerender()
 events['addon command']('unload')
 assert(outgoing=='lua unload PetBar')
 os.clock=real_clock
-print('PetBar shared-fade lifecycle and numeric TP with mocked Windower: PASS')
+print('PetBar shared fades, HP-over-TP, flash commands, numeric TP: PASS')
