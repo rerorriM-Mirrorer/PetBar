@@ -3,7 +3,7 @@
 -- preserve EnemyBar2's native animation behavior and attribution.
 _addon.name='PetBar'
 _addon.author='A'
-_addon.version='0.1.0-test1'
+_addon.version='0.2.0-test2'
 _addon.language='English'
 _addon.commands={'pb','petbar'}
 
@@ -15,6 +15,7 @@ local gauge=require('ffxiGauge')
 local anim=require('animationSettings')
 local layout_model=require('layoutModel')
 local tp_renderer=require('tpRenderer')
+local pet_animation=require('petAnimationPreset')
 
 local summon_kinds=require('summonKinds')
 local is_avatar=summon_kinds.is_summon
@@ -24,11 +25,7 @@ local defaults={
     gap=6,scale=1,font_size=13,
     offsets={hp={x=0,y=0},tp={x=0,y=0},
         name={x=0,y=0},tptext={x=0,y=0}},
-    effects={damage_trail=true,ghost_hit=true,hit_shake=true,
-        healing_effect=true,text_effect=true,low_hp_pulse=true,
-        animation_duration=.18,trail_delay=1.5,trail_duration=.45,
-        heal_duration=.35,text_duration=.22,
-        trail_color={red=167,green=57,blue=96,alpha=175}}
+    effects=pet_animation.defaults()
 }
 local settings=config.load(defaults)
 settings.pos=settings.pos or {x=-1,y=-1}
@@ -320,6 +317,7 @@ local function help()
     line('lock | unlock','Disable/enable drag; Ctrl-drag snaps to 10px')
     windower.add_to_chat(0,('ANIMATIONS & LIFECYCLE'):color(167))
     line('shake [on|off] | ghost [on|off]','Toggle HP impact effects')
+    line('defaults animations','Opt in to Franklet-derived EnemyBar2 animation settings')
     line('debug [on|off]','Log major avatar changes')
     line('save | restart | unload','Save, or cleanly reload/unload once')
 end
@@ -327,9 +325,13 @@ local function status()
     msg('v'.._addon.version..' | '..settings.layout..
         ' | '..(settings.visible and 'auto' or 'hidden')..
         ' | '..(settings.locked and 'locked' or 'draggable'))
-    msg('Avatar '..(s.pet or 'none')..' | HP '..tostring(s.hpp or '--')..
+    msg('Avatar '..(s.pet or 'none')..' | HP '..tostring(s.hpp~=nil and s.hpp or '--')..
         '% | TP '..tostring(s.tp or '--')..
         ' | cutscene '..tostring(s.in_cs))
+    msg('HP animation '..tostring(settings.effects.animation_duration)..
+        's, trail '..tostring(settings.effects.trail_delay)..'s + '..
+        tostring(settings.effects.trail_duration)..'s, shake '..
+        tostring(settings.effects.shake_style))
     msg('Position '..x..','..y..' | HP width '..width..
         ' | TP width '..tp_width..
         ' | offsets hp('..settings.offsets.hp.x..','..settings.offsets.hp.y..
@@ -363,6 +365,16 @@ local function command(cmd,...)
         return
     end
     if cmd=='save' then save();msg('Settings saved');return end
+    if cmd=='defaults' then
+        if a[1]~='animations' then
+            msg('Use //pb defaults animations.',true);return
+        end
+        -- Explicit opt-in. A reload only merges new keys, never resets a save.
+        settings.effects=pet_animation.defaults()
+        save();rebuild()
+        msg('Franklet-derived animation defaults applied; layout retained')
+        return
+    end
     if cmd=='hide' or cmd=='show' or cmd=='auto' then
         settings.visible=cmd~='hide';save()
         msg(settings.visible and 'Automatic pet visibility enabled' or 'HUD hidden')
