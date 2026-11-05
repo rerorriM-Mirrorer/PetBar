@@ -224,6 +224,9 @@ local function scan(now)
                 end
             end
         end
+        if fade:sample(now).identity~=observed.id and not s.preview then
+            fade:appear(observed.id,now)
+        end
         if s.hpp==0 then
             -- Death takes precedence even when Release was requested.
             depart('death',now)
@@ -249,9 +252,13 @@ local function on_pet_packet(id,data)
     if not pet or index~=pet.index then return end
     if s.pet_index and s.pet_index~=index then return end
     if not s.pet_index then
+        if s.fading_id==pet.id then return end
         s.pet,s.pet_index,s.pet_id=pet.name,pet.index,pet.id
         s.hpp=clamp(tonumber(pet.hpp) or 100,0,100)
         hp:set_value(s.hpp/100,true)
+        tp:set_value(nil,true)
+        s.departure=nil
+        fade:appear(pet.id,os.clock())
     end
     local h=tonumber(p['Current HP%'])
     if h and h>=0 and h<=100 and h~=s.hpp then
@@ -332,14 +339,19 @@ local function frame()
 end
 local function preview(kind,raw_tp)
     kind=kind or 'show'
+    local now=os.clock()
     if kind=='off' then
+        if s.preview and fade:sample(now).identity=='preview' then
+            s.departure={pet='Carbuncle',hpp=82,tp=1450}
+            fade:depart('missing',now)
+        end
         s.preview=nil
-        hp:set_value((s.hpp or 100)/100,true)
-        tp:set_value(s.tp,true)
         msg('Preview off');return
     end
-    if kind~='show' and kind~='hit' and kind~='heal' and kind~='tp' then
-        msg('Use //pb preview [show|hit|heal|tp|off].',true);return
+    if kind~='show' and kind~='hit' and kind~='heal' and
+        kind~='tp' and kind~='release' and kind~='death' then
+        msg('Use //pb preview [show|hit|heal|tp|release|death|off].',true)
+        return
     end
     if s.in_cs then msg('Preview unavailable during cutscenes.',true);return end
     local chosen=raw_tp and tonumber(raw_tp)
@@ -347,7 +359,21 @@ local function preview(kind,raw_tp)
         or chosen~=math.floor(chosen)) then
         msg('Use //pb preview tp [0..3000].',true);return
     end
-    s.preview={expires=os.clock()+8}
+    s.departure=nil
+    s.preview={expires=now+8}
+    if kind=='release' or kind=='death' then
+        -- Make the preview fully visible before the simulated departure.
+        -- This does NOT affect the real summon or call an actual pet ability.
+        hp:set_value(.82,true)
+        tp:set_value(1450,true)
+        fade:appear('preview',now-fade.fade_in)
+        fade:depart(kind,now)
+        s.departure={pet='Carbuncle',hpp=82,tp=1450}
+        s.preview.expires=now+1
+        msg('Preview '..kind..' fade; no pet command sent')
+        return
+    end
+    fade:appear('preview',now)
     show(true)
     if kind~='tp' then tp:set_value(1450,true) end
     if kind=='hit' then
@@ -357,7 +383,6 @@ local function preview(kind,raw_tp)
     elseif kind=='tp' then
         if chosen then tp:set_value(chosen,true)
         else
-            -- Cross the first 1000-TP boundary, revealing a pulsing lower tier.
             tp:set_value(850,true);tp:set_value(1460,false)
         end
     else
@@ -446,6 +471,17 @@ local function command(cmd,...)
         return
     end
     if cmd=='save' then save();msg('Settings saved');return end
+    if cmd=='release' then
+        if not s.pet_id then
+            msg('No summoned pet to release.',true);return
+        end
+        -- Convenience path: normal /pet Release still works via packet detection.
+        -- The marker never whites a bar without the owned pet disappearing.
+        releases:observe(9,90,s.pet_id,os.clock())
+        windower.send_command('input /pet "Release" <me>')
+        msg('Release requested; waiting for pet departure')
+        return
+    end
     if cmd=='tpflash' then
         local choice=a[1] and a[1]:lower()
         if choice~='white' and choice~='black' then
@@ -591,9 +627,25 @@ end)
 windower.register_event('incoming chunk',function(id,data)
     if hp and not s.stopping and not s.preview then on_pet_packet(id,data) end
 end)
+-- The standard /pet Release command is a 0x01A job-ability action
+-- (Windower resources job_abilities[90]). Treat it as intent only:
+-- the same owned summon must subsequently disappear for a white fade.
+windower.register_event('outgoing chunk',function(id,original,modified,injected,blocked)
+    if id~=0x01A or blocked or injected or not s.pet_id then return end
+    local ok,packet=pcall(packets.parse,'outgoing',modified or original)
+    if not ok or type(packet)~='table' then return end
+    if releases:observe(packet['Category'],packet['Param'],s.pet_id,os.clock())
+        and settings.debug then
+        msg('Release action observed; awaiting disappearance')
+    end
+end)
 windower.register_event('status change',function(code)
     s.in_cs=code==4
-    if s.in_cs then hide();gauge.clear_ghosts() end
+    if s.in_cs then
+        reset(true)
+        s.preview=nil
+        hide()
+    end
 end)
 windower.register_event('zone change',function() reset(true);hide() end)
 windower.register_event('job change',function() reset(true);hide() end)
