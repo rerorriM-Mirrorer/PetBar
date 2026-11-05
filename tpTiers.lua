@@ -1,8 +1,9 @@
 -- Two drawable TP layers, three successive 1000-TP passes.
--- State 0: filling base. State 1: base flashes, 93%-opaque blue overlay grows.
--- State 2: base flashes faster, same overlay turns brighter cyan and grows.
--- State 3: a single full-width flash alternates from dark blue to white/black.
+-- State 0: charge steadily. States 1/2: completed underlay alternates
+-- between 100% and 0% alpha under the translucent second fill.
+-- Stage 3: the full bar alternates between visible and transparent.
 local tiers={}
+tiers.default_periods={.8,.4,.3} -- Full on/off cycle in seconds.
 local function clamp(v) return math.max(0,math.min(1,v)) end
 function tiers.sample(value)
     local valid=type(value)=='number' and value==value and
@@ -16,7 +17,7 @@ function tiers.sample(value)
         base_fill=stage==0 and clamp(tp/1000) or 1,
         overlay_fill=overlay,
         overlay_alpha=238, -- 93.3%; original FFXI opacity sample still pending.
-        pulse_period=stage==1 and .8 or stage==2 and .4 or stage==3 and .3 or nil,
+        blink_stage=stage>0 and stage or nil,
         full_flash=stage==3,
     }
 end
