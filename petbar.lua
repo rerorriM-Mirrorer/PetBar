@@ -22,7 +22,7 @@ local is_avatar=summon_kinds.is_summon
 local defaults={
     visible=true,locked=false,layout='vertical',
     pos={x=-1,y=-1},width=260,hp_width=0,tp_width=0,
-    gap=6,scale=1,font_size=13,
+    gap=6,scale=1,font_size=13,tp_flash_target='white',
     offsets={hp={x=0,y=0},tp={x=0,y=0},
         name={x=0,y=0},tptext={x=0,y=0}},
     effects=pet_animation.defaults()
@@ -148,7 +148,7 @@ local function rebuild()
     local g=layout_model.calculate(settings,uw,uh)
     width,tp_width=g.hp_width,g.tp_width
     hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
-    tp=tp_renderer.new(tp_width,options)
+    tp=tp_renderer.new(tp_width,options,nil,settings.tp_flash_target)
     caption=make_text(245,238,242,true)
     tp_label=make_text(177,211,255,false)
     position()
@@ -302,7 +302,8 @@ local function help()
     line('status','Version, avatar HP/TP, layout and position')
     line('show | hide | auto','Automatic pet-conditional visibility or hide')
     line('preview [show|hit|heal|tp|off]','Eight-second live HUD effects preview')
-    line('preview tp [0..3000]','Inspect 1000/2000/3000 TP layers and pulses')
+    line('preview tp [0..3000]','Inspect full-width 1000/2000/3000 TP passes')
+    line('tpflash <white|black>','Choose full-TP flash color at 3000')
     windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
     line('layout <vertical|horizontal>','Equal-width HP/TP; vertical default')
     line('width <60..800>','Set both gauges; reset individual overrides')
@@ -328,6 +329,8 @@ local function status()
     msg('Avatar '..(s.pet or 'none')..' | HP '..tostring(s.hpp~=nil and s.hpp or '--')..
         '% | TP '..tostring(s.tp or '--')..
         ' | cutscene '..tostring(s.in_cs))
+    msg('TP full flash '..tostring(settings.tp_flash_target or 'white')..
+        ' | 2 layers, 93% overlay, progressive 1000/2000 pulses')
     msg('HP animation '..tostring(settings.effects.animation_duration)..
         's, trail '..tostring(settings.effects.trail_delay)..'s + '..
         tostring(settings.effects.trail_duration)..'s, shake '..
@@ -365,6 +368,17 @@ local function command(cmd,...)
         return
     end
     if cmd=='save' then save();msg('Settings saved');return end
+    if cmd=='tpflash' then
+        local choice=a[1] and a[1]:lower()
+        if choice~='white' and choice~='black' then
+            msg('Use //pb tpflash <white|black>.',true);return
+        end
+        settings.tp_flash_target=choice
+        save()
+        tp:set_flash_target(choice)
+        msg('3000 TP full flash: '..choice)
+        return
+    end
     if cmd=='defaults' then
         if a[1]~='animations' then
             msg('Use //pb defaults animations.',true);return
