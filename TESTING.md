@@ -1,5 +1,46 @@
 # PetBar TESTING.md
 
+## Current Development Status — Shared Fade and TP Alpha Flash Test 4 (2026-11-05, America/Chicago)
+
+- **Repository/branch:** `rerorriM-Mirrorer/PetBar` / `dev/tp-alpha-flash-and-zorder-2026-11-05`. Base is Test 3 head `55e07709f98de28c0ef3e5f5a746bf283fb20145`. The earlier Test 3 branch and `main` are unchanged. Current version: `0.4.0-test4`.
+- **Latest user guidance:** After previewing Test 3, the user prefers **one normal fade out for every pet departure**. A previous white Release animation is no longer wanted. HP artwork must render above TP artwork when bars overlap. All completed-tier TP flashing should switch native gauge opacity **100% ↔ 0%** (instantaneous half-cycle switching), never black/white or color/brightness pulse. User also asked for an adjustable TP flash period.
+- **Settings evidence (user-provided XML, 2026-11-05):** Global `width=260`, `layout=vertical`, `gap=6`, `scale=1`; user's Cioara override `pos=(2212,2072)`, `tp_width=240`, TP offset `(+30,-6)`, name offset `(+6,-47)`, TP number offset `(+18,-21)`. Global HP effects include `animation_duration=.18`, `text_duration=.22`, `trail_delay=1.5`, `trail_duration=.45`, trail alpha `175`, classic shake, and ghost lift `+1` / drift `-2`. These were **observed settings, not new hardcoded defaults**. Never reset/replace user's XML or alter these values silently. Old Cioara `tp_flash_target=black` is now a harmless ignored legacy key.
+- **Runtime changes:** All departures use the same 0.40s normal-color fade (no release intent parsing and no special white outline/mask). `//pb preview fade` added, with `preview death` and `preview release` maintained as identical aliases. `//pb release` still invokes the ordinary FFXI ability, but has no separate fade classification. HP gauge sprites are constructed **after** the TP gauge sprites for intended HP-on-top draw order. The TP base underlay now blinks whole gauge (including native trough) between fully visible and fully transparent; its 93.3%-opaque advancing cyan layer does not blink. At 3000, only the full bar remains and blinks to zero opacity. Below 1000, its charging fill is steady. No pulse or color swap.
+- **Configurable flash cycle:** `//pb tpflashperiod` displays defaults `1000=.8s`, `2000=.4s`, `3000=.3s`. `//pb tpflashperiod 1000 0.65`, `... 2000 0.4`, `... 3000 0.3`, or `... all 0.5` save independent complete on+off cycles (0.1–5.0 seconds); `tpperiod` alias. Deprecated `//pb tpflash white|black` reports the new command and does not change colors. New settings are `tp_flash_1000`, `tp_flash_2000`, `tp_flash_3000` and merge with existing Cioara layout and effects.
+- **Static/simulated verification:** Inspected original branch files and reviewed patches; added/updated regression sources for stage math, TP renderer, native alpha multiplication, unified fade, HP/TP construction order, and command/config integration. **No successful Lua 5.1 CI workflow, direct Windower smoke, or in-game FFXI Test 4 result has been verified.** Do not claim those regressions passed without execution.
+- **Known limitation:** Windower image stacking is intended to follow construction order; actual HP-over-TP visual z-order needs in-game confirmation. New TP blink is an abrupt 50%-duty cycle, not a smooth opacity fade. The exact visual cadence still needs real client feedback. Existing user `tp_flash_target` XML is preserved but deprecated.
+- **Deferred:** SMN-HUD-style portrait graphics, Rage/Ward timers, XIVParty TP port, and optional sounds remain outside this patch.
+
+### Test 4 live acceptance
+
+1. Back up your current `PetBar/data` XML and existing addon folder; install the **full Test 4 branch folder** as `Windower4/addons/PetBar/` (including `WORKFLOW.md`, `TESTING.md`). Reload: `//lua reload PetBar`, `//pb status`, `//pb help`. Confirm version `0.4.0-test4`, retained Cioara position (2212,2072), TP width 240, all element offsets and familiar EnemyBar2 effects. Do not use `//pb defaults animations` unless you intentionally want to replace your current saved effects.
+2. Use `//pb preview tp 999` (steady fill), `1000` and `1450` (underlayer toggles full transparency; slightly transparent next layer stays), `2000` and `2600` (same effect faster, brighter cyan), and `3000` (whole gauge toggles visible/invisible, not black). Check no color ramp/pulsing and no persistent end-cap overhang.
+3. `//pb tpflashperiod`, then alter `//pb tpflashperiod 1000 1.2`, `... 2000 0.5`, `... 3000 0.25`. Confirm each period changes independently, survives reload, and preserves other settings. `//pb tpflashperiod all 0.5` should set every stage. Restore preferred periods afterward.
+4. Compare `//pb preview fade`, `//pb preview death`, `//pb preview release`; all three should show **identical color-preserving exit** and text strokes should stay dark. Check actual `/pet "Release" <me>` vs real pet defeat; neither should flash white. Check normal entrance, pet replacement and cutscene/zone cleanup.
+5. With deliberate overlap (e.g. temporary TP y-offset closer to HP), confirm **HP native art and edges are drawn on top of TP**. Test both vertical and horizontal layouts and reset to Cioara's saved layout afterward. Confirm dragging and scaling do not reverse the stacking.
+6. Regression: animate HP impact/ghost/heal, gain/spend TP, summon a spirit, preview fade while a real summon exists, reload, lock/unlock, hide/auto and unrelated EnemyBar2 running concurrently. Record any Lua errors or visual artifacts.
+
+### Test 4 patch/checkpoint history (chronological)
+
+| Commit | Change |
+| --- | --- |
+| `c97e64e`, `f02f2c7` | One fade timeline and runtime behavior for all departures; remove outgoing Release class |
+| `ac438ce`, `2081962` | Update deterministic transition and Windower mock expectations |
+| `8f251d3` | Allocate TP before HP to put HP native images on top |
+| `cf07c86`, `f83fb85`, `d29c64d` | New TP alpha-blink model, native opacity multiplication and two-layer renderer |
+| `3d41088` | Saved per-band flash period commands and compatibility with existing settings |
+| `a2500bf`, `ba23740`, `5f21a1b`, `958333f` | Model, renderer, gauge and mocked integration regression source |
+| `3c268f6`, `2ff65dc` | Remove unused release-only classifier and its obsolete tests |
+| `243554b`, `a388d2c` | Remove unused white-release/fullflash images and align native gauge test |
+| `90c09d0` | README and cumulative changelog reflect new Test 4 behavior |
+| Final documentation commit and published GitHub head are reported separately at handoff. |
+
+### Previous branch clarification
+
+The older **Test 3** and dormant fade sections below accurately record the earlier design, including intentional Release whitening and `tp_flash_target` support. **Those are now superseded by Test 4**, not available runtime features in this branch. Their historical observations and commit references are retained for traceability.
+
+---
+
 ## Current Development Status — Pet Fade Live Test 3 (2026-11-04, America/Chicago)
 
 - **Canonical repo / isolated branch:** `rerorriM-Mirrorer/PetBar` / `dev/pet-fade-live-test3-2026-11-04`. Source baseline is the dormant infrastructure commit `a800cbdc7d60d63dee0a38aa561bbdfe74428cda`; `main`, Test 1 and Test 2 branches remain untouched.
