@@ -225,6 +225,11 @@ local function scan(now)
             end
         end
         if fade:sample(now).identity~=observed.id and not s.preview then
+            -- A demonstration may have replaced the visible gauge values.
+            -- Restore the real pet data when its own fade resumes.
+            hp:set_value((s.hpp or 100)/100,true)
+            tp:set_value(s.tp,true)
+            s.departure=nil
             fade:appear(observed.id,now)
         end
         if s.hpp==0 then
@@ -300,12 +305,13 @@ local function frame()
     if s.preview and now>=s.preview.expires then
         s.preview=nil
         if fade:sample(now).identity=='preview' then
+            s.departure={pet='Carbuncle',
+                hpp=math.floor((hp.target_value or hp.value or .82)*100+.5),
+                tp=tp:text_value(now)}
             fade:depart('missing',now)
         end
-        -- Keep the displayed preview values during its exit.
-        if s.pet_index then
-            s.last_scan=-999
-        end
+        -- A real pet, if present, is picked up by the next scan.
+        s.last_scan=-999
     end
     if now-s.last_scan>=.10 and not s.preview and not s.in_cs then
         s.last_scan=now
