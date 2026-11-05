@@ -9,4 +9,4 @@ During substantial work, provide frequent concise progress and intention updates
 In testing ZIPs, include `WORKFLOW.md` and `TESTING.md` alongside the delivered addon or patch files (inside the addon folder when present), not as extra copies at the outer ZIP root.
 
 
-PetBar project branch: `dev/smn-test1-2026-11-04`. On `main`, no addon executable is yet released.
+PetBar development occurs on isolated working branches. Read the **current branch and source checkpoint at the top of `TESTING.md`** rather than assuming an older Test 1 branch remains active. `main` is reserved for accepted live-tested releases; no addon executable is published there yet.
