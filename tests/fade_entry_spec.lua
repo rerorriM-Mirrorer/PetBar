@@ -1,4 +1,4 @@
--- Lua 5.1 mock-integration test for PetBar fade and numeric-only TP.
+-- Lua 5.1 mock integration: all departures share the same color-preserving fade.
 -- No Windower runtime: verifies that the actual petbar.lua entrypoint wires events.
 package.path='./?.lua;'..package.path
 local events={}
@@ -96,7 +96,7 @@ package.preload.tpRenderer=function()
     end}
 end
 assert(loadfile('petbar.lua'))()
-assert(events.load and events.prerender and events['outgoing chunk'])
+assert(events.load and events.prerender and not events['outgoing chunk'])
 assert(events['addon command'])
 events.load()
 events.prerender()
@@ -121,24 +121,26 @@ events['incoming chunk'](0x068,{
 })
 events.prerender()
 assert(text_objects[2].content=='211','TP label should be numeric only')
--- A true /pet Release command is recognized as intent, not instant dismissal.
-events['outgoing chunk'](0x01A,{
-    ['Category']=9,['Param']=90
-})
-assert(text_objects[1].a==255,'release intent must not hide before departure')
+-- The optional Release convenience command sends the ability without changing
+-- visibility or color. The exit begins only when the pet disappears.
+events['addon command']('release')
+assert(outgoing=='input /pet "Release" <me>')
+assert(text_objects[1].a==255,'release command must not hide early')
 mob=nil;player.mob.pet_index=0
 now=1.6
 events.prerender()
 assert(text_objects[1].visible)
 now=1.75
 events.prerender()
-assert(text_objects[1].stroke[1]==255 and text_objects[1].stroke[2]==255)
-assert(text_objects[1].rgb[1]==255 and text_objects[1].rgb[2]==255)
+assert(text_objects[1].stroke[1]==12 and text_objects[1].stroke[2]==12,
+    'release must keep ordinary dark text stroke')
+assert(text_objects[1].rgb[1]==245 and text_objects[1].rgb[2]==238,
+    'release must keep original text colors')
 assert(text_objects[1].a>0 and text_objects[1].a<255)
 now=2.2
 events.prerender()
 assert(not text_objects[1].visible,'completed departure must hide')
--- A fresh pet has its own normal text/stroke palette after the white exit.
+-- A fresh pet has its normal text and stroke without special reset effects.
 mob={index=52,id=4002,name='Shiva',hpp=80}
 player.mob.pet_index=52
 now=2.4
@@ -162,13 +164,15 @@ events['addon command']('preview','release')
 events.prerender()
 now=3.85
 events.prerender()
-assert(text_objects[1].stroke[1]==255)
+assert(text_objects[1].stroke[1]==12)
 events['addon command']('preview','death')
 events.prerender()
 now=4.0
 events.prerender()
 assert(text_objects[1].stroke[1]==12)
+events['addon command']('preview','fade')
+events.prerender()
 events['addon command']('unload')
 assert(outgoing=='lua unload PetBar')
 os.clock=real_clock
-print('PetBar lifecycle entrypoint with mocked Windower: PASS')
+print('PetBar shared-fade lifecycle and numeric TP with mocked Windower: PASS')
