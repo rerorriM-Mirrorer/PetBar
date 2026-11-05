@@ -1,0 +1,21 @@
+package.path='./?.lua;'..package.path
+local tiers=require('tpTiers')
+local function eq(tp,a,b,c,pa,pb,pc)
+    local s=tiers.sample(tp)
+    assert(s.known)
+    assert(s.fill[1]==a and s.fill[2]==b and s.fill[3]==c,
+        'Wrong fills at '..tostring(tp))
+    assert(s.pulse[1]==pa and s.pulse[2]==pb and s.pulse[3]==pc)
+end
+eq(0,0,0,0,false,false,false)
+eq(650,.65,0,0,false,false,false)
+eq(1000,1,0,0,true,false,false)
+eq(1450,1,.45,0,true,false,false)
+eq(2000,1,1,0,true,true,false)
+eq(2600,1,1,.6,true,true,false)
+eq(3000,1,1,1,true,true,true)
+eq(5000,1,1,1,true,true,true)
+assert(not tiers.sample(nil).known)
+assert(not tiers.sample(0/0).known)
+assert(not tiers.sample(nil).pulse[1])
+print('PetBar 3-tier TP math: PASS')
