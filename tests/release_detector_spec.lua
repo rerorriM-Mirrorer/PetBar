@@ -1,0 +1,17 @@
+package.path='./?.lua;'..package.path
+local r=require('petReleaseDetector').new(function() return 0 end)
+assert(r:reason(100,60,0)=='missing')
+assert(not r:observe(9,89,100,0)) -- Retreat must NEVER mark a release.
+assert(not r:observe(9,91,100,0))
+assert(not r:observe(8,90,100,0))
+assert(not r:observe(9,90,nil,0))
+assert(r:observe(9,90,100,0))
+assert(r:reason(100,60,.3)=='release')
+assert(r:reason(101,60,.3)=='missing')
+assert(r:reason(100,0,.3)=='death')
+assert(r:reason(100,60,3)=='missing')
+r:clear()
+assert(r:reason(100,60,.1)=='missing')
+assert(r:observe('Job ability usage',90,200,5))
+assert(r:reason(200,75,5.3)=='release')
+print('Release detector intent vs observed disappearance: PASS')
