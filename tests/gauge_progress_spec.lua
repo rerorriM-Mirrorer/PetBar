@@ -67,7 +67,7 @@ assert(g.trough[3]._x+g.trough[3]._width==20+260,
 g:set_transition(.5,0)
 assert(g.fill[1].a==128 and g.fill[1].r==120)
 assert(g.trough[1].a==128)
-assert(not g.release_mask[1].seen,'normal fade must never display white mask')
+assert(g.release_mask==nil,'no release-specific white-mask sprites allocated')
 g:move(20,40)
 g:set_transition(1,0)
 assert(g.fill[1].a==255 and g.fill[1].r==120)
