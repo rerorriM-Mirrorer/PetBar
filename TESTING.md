@@ -1,5 +1,50 @@
 # PetBar TESTING.md
 
+## Current Development Status — Pet Fade Live Test 3 (2026-11-04, America/Chicago)
+
+- **Canonical repo / isolated branch:** `rerorriM-Mirrorer/PetBar` / `dev/pet-fade-live-test3-2026-11-04`. Source baseline is the dormant infrastructure commit `a800cbdc7d60d63dee0a38aa561bbdfe74428cda`; `main`, Test 1 and Test 2 branches remain untouched.
+- **Original user request:** Add natural fade-in on summon; normal-color fade-out on pet death; white-on-release fade of **every foreground and text stroke**; remove the redundant TP prefix, keeping its number. User also asked about smaller translucent SMN-HUD portraits behind HP and future Rage/Ward cooldown badges; these are *design discussion only* and **not included** in Test 3.
+- **What changed:** PetBar version `0.3.0-test3`. The existing dormant `petTransitions` / `transitionColors` units are now wired into real pet scans, owner-checked TP packet acquisitions, cutscene/zone resets, preview behavior, and per-frame native gauge rendering. Native images preserve original per-sprite effect alpha/tint before each fade, so TP layers, 3000 full bar flash, HP recovery/trails, and text-stroke outlines are all faded together without cumulative tint drift. Pet-name/HP/TP snapshot persists during final exit.
+- **Release detection:** Windower `0x01A` outgoing `Category=9` / `Param=90` (SMN Release's job ability resource ID); the marker expires after 2.5 seconds, is tied to the currently owned pet ID and is **only acted on if the pet actually disappears**. HP0 death overrides the marker. If any packet variant differs, the departure stays normal-colored. Manual `//pb release` sends normal `/pet "Release" <me>` and marks intent. Actual client packet values not yet validated. No packets are injected.
+- **Preview:** `//pb preview show`, `//pb preview death` and `//pb preview release` allow visual checks without issuing pet commands. `//pb preview tp N` remains available for overlap test.
+- **Timing defaults:** enter 0.24s, death/missing 0.40s, Release 0.48s and white tint 0.12s. Screen changes and cutscenes still clear visuals immediately. Colors return to original palette on a new pet.
+- **Available source checks:** inspected current root workflow and testing, reread Windower `images.lua` (`color/alpha` getters), `texts.lua` (`stroke_color/stroke_alpha`), job ability Release resource 90, and outgoing `0x01A` field definitions. Added `tests/release_detector_spec.lua` and `tests/fade_entry_spec.lua`, plus the prior `tests/transitions_spec.lua`. Updated branch coverage in `.github/workflows/lua51.yml`. **No successful Lua 5.1 CI result, live Windower smoke, or actual PetBar Test 3 gameplay testing has been confirmed.** Treat as experimental.
+- **Known-good baseline:** PetBar Test 1 was shown in-game with Carbuncle at 99% HP / 211 TP, but contained a persistent endcap and no spirits. Test 2 and Test 3 remain live-unverified. See older entries below without interpreting inherited claims as current release status.
+
+### Test 3 live checklist
+
+1. Back up the current `Windower4/addons/PetBar/` and `data/` settings. Unpack the entire Test 3 branch ZIP, rename extracted root to `PetBar`, and overlay it carefully; ensure `WORKFLOW.md` and `TESTING.md` are inside the addon folder. `//lua reload PetBar`, then `//pb status` should show version `0.3.0-test3`.
+2. With no pet: `//pb preview show` should appear smoothly and fade away after eight seconds. Try `//pb preview death` to verify the normal pink/blue, dark-stroke fade; `//pb preview release` to verify both bars and both text strokes become white while fading, then fully hide. Repeat twice to detect lingering whiteness.
+3. Summon Carbuncle, then a spirit. Check smooth entrance, pet name/HP/TP, TP **number alone with no `TP` prefix**, exit on summon replacement, and no white contamination between pets.
+4. Make a pet actually die with HP reaching 0: pink/blue elements and strokes should only fade down, not turn white. Detached finishing ghost is preserved for death but scene cleanup cancels it.
+5. Use normal `/pet "Release" <me>` and compare `//pb release`. The *same* pet should turn white and fade only after it disappears. If it instead fades normally, enable `//pb debug on` and capture outgoing action/TP evidence: `0x01A` Category and Param plus observed pet ID. A blocked/unsuccessful Release must not whiten the HUD. If an unrelated pet disappears while a Release hint is pending, it must not inherit that white exit.
+6. During entry or exit, invoke another summon or a preview, then zone or enter a cutscene. Confirm no ghost UI, no stale HP/TP, correct new colors, no hidden drag interception.
+7. Retest existing Test 2 width/offset/layout commands, TP 1000/2000 overlay and flash, HP impact and ghost animations, `tpflash black/white`, lock/unlock, manual `show/hide`, restart/unload, and normal EnemyBar2 running alongside PetBar.
+
+### Small Test 3 patch record
+
+| Commit | Feature |
+| --- | --- |
+| `48594de` | Non-destructive fade and whitening of native HP and TP gauge sprites |
+| `d039df4` | Apply the same fade to both TP layers |
+| `bdb1285`, `f65efd3` | Conservative Release intent classifier and negative cases |
+| `f524d21` | Remove `TP` text prefix, preserve numeric value |
+| `2d85588` | Connect state machine, persistent departing snapshot, text stroke tint |
+| `b2f35bf` | Send/observe Release, expose normal-death and white-release previews |
+| `0875901` | Restore live pet values after preview |
+| `76011d9` | Mocked Windower scenario test for entrance, release, death and TP number |
+| `e1e5567` | CI branch coverage for Lua 5.1 parsing and model checks |
+| `de104a7` | README usage and cumulative changelog |
+| Final documentation commit and remote head are reported in the delivery handoff. |
+
+### Future design requests — explicitly deferred
+
+- Small, dim, semi-transparent avatar portrait artwork behind the HP bar, potentially inspired by Nalfey's SMN-HUD. Original assets are not currently available from its published repository; obtain properly authorized images or create original artwork before embedding.
+- Two compact BP Rage and BP Ward countdown badges: recognizable offensive/support icons, dim with time remaining while cooling, brighter when ready; consider native FFXI icon source and `get_ability_recasts` when implementing.
+- Keep the XIVParty TP flash port and optional 1000/2000/3000 sound cue as separate future work.
+
+---
+
 ## Current Development Status — Dormant Pet Fade Infrastructure (2026-11-04)
 
 - **Repository:** `rerorriM-Mirrorer/PetBar`; isolated `dev/pet-fade-infrastructure-2026-11-04` branch from the exact Test 2 head `5036b97f1770e3c29f91bcb703236e6882915ba5`.
