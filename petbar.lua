@@ -18,7 +18,6 @@ local tp_renderer=require('tpRenderer')
 local pet_animation=require('petAnimationPreset')
 local transitions=require('petTransitions')
 local transition_colors=require('transitionColors')
-local release_detector_class=require('petReleaseDetector')
 
 local summon_kinds=require('summonKinds')
 local is_avatar=summon_kinds.is_summon
@@ -51,7 +50,6 @@ local hp,tp,caption,tp_label
 local x,y,width,tp_width,total_w,total_h=0,0,260,260,260,50
 local visible=false
 local fade=transitions.new()
-local releases=release_detector_class.new()
 local label_palette={red=245,green=238,blue=242,alpha=255}
 local tp_palette={red=177,green=211,blue=255,alpha=255}
 local stroke_palette={red=12,green=12,blue=12,alpha=180}
@@ -85,7 +83,6 @@ end
 local function reset(clear,retain_exit)
     s.pet,s.pet_id,s.pet_index,s.hpp,s.tp,s.death_at=nil,nil,nil,nil,nil,nil
     s.last_packet_hp=-999
-    releases:clear()
     if not retain_exit then
         fade:clear()
         s.departure=nil
@@ -94,13 +91,12 @@ local function reset(clear,retain_exit)
     if clear then gauge.clear_ghosts() end
 end
 -- Keep the last numbers and pet identity while the actual pet is already gone.
--- The release whiten is never inferred from entity disappearance by itself.
+-- Every departure keeps its ordinary colors and fades the same way.
 local function depart(reason,now)
     if not s.pet_index then return end
     local identity=s.pet_id
     s.departure={pet=s.pet,hpp=s.hpp,tp=s.tp}
     s.last_departure=reason
-    if reason=='release' then gauge.clear_ghosts() end
     fade:depart(reason,now)
     s.fading_id=identity
     reset(false,true)
@@ -233,11 +229,11 @@ local function scan(now)
             fade:appear(observed.id,now)
         end
         if s.hpp==0 then
-            -- Death takes precedence even when Release was requested.
+            -- An observed death fades out like any other disappearance.
             depart('death',now)
         end
     elseif s.pet_index then
-        local reason=releases:reason(s.pet_id,s.hpp,now)
+        local reason=s.hpp==0 and 'death' or 'missing'
         if settings.debug then msg('Summon left: '..reason) end
         depart(reason,now)
     end
@@ -355,8 +351,8 @@ local function preview(kind,raw_tp)
         msg('Preview off');return
     end
     if kind~='show' and kind~='hit' and kind~='heal' and
-        kind~='tp' and kind~='release' and kind~='death' then
-        msg('Use //pb preview [show|hit|heal|tp|release|death|off].',true)
+        kind~='tp' and kind~='fade' and kind~='release' and kind~='death' then
+        msg('Use //pb preview [show|hit|heal|tp|fade|off].',true)
         return
     end
     if s.in_cs then msg('Preview unavailable during cutscenes.',true);return end
@@ -367,16 +363,16 @@ local function preview(kind,raw_tp)
     end
     s.departure=nil
     s.preview={expires=now+8}
-    if kind=='release' or kind=='death' then
+    if kind=='fade' or kind=='release' or kind=='death' then
         -- Make the preview fully visible before the simulated departure.
         -- This does NOT affect the real summon or call an actual pet ability.
         hp:set_value(.82,true)
         tp:set_value(1450,true)
         fade:appear('preview',now-fade.fade_in)
-        fade:depart(kind,now)
+        fade:depart('missing',now)
         s.departure={pet='Carbuncle',hpp=82,tp=1450}
         s.preview.expires=now+1
-        msg('Preview '..kind..' fade; no pet command sent')
+        msg('Preview normal fade; no pet command sent')
         return
     end
     fade:appear('preview',now)
@@ -407,7 +403,7 @@ local function help()
     line('status','Version, avatar HP/TP, layout and position')
     line('show | hide | auto','Automatic pet-conditional visibility or hide')
     line('preview [show|hit|heal|tp|off]','Eight-second live HUD effects preview')
-    line('preview release | death','Preview release-white or normal death fade')
+    line('preview fade','Preview normal exit (also preview death/release)')
     line('preview tp [0..3000]','Inspect full-width 1000/2000/3000 TP passes')
     line('tpflash <white|black>','Choose full-TP flash color at 3000')
     windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
@@ -481,9 +477,7 @@ local function command(cmd,...)
         if not s.pet_id then
             msg('No summoned pet to release.',true);return
         end
-        -- Convenience path: normal /pet Release still works via packet detection.
-        -- The marker never whites a bar without the owned pet disappearing.
-        releases:observe(9,90,s.pet_id,os.clock())
+        -- Convenience command; normal /pet Release has identical fade behavior.
         windower.send_command('input /pet "Release" <me>')
         msg('Release requested; waiting for pet departure')
         return
@@ -632,24 +626,6 @@ windower.register_event('prerender',function()
 end)
 windower.register_event('incoming chunk',function(id,data)
     if hp and not s.stopping and not s.preview then on_pet_packet(id,data) end
-end)
--- The standard /pet Release command is a 0x01A job-ability action
--- (Windower resources job_abilities[90]). Treat it as intent only:
--- the same owned summon must subsequently disappear for a white fade.
-windower.register_event('outgoing chunk',function(id,original,modified,injected,blocked)
-    if id~=0x01A or blocked or injected or not s.pet_id then return end
-    local ok,packet=pcall(packets.parse,'outgoing',modified or original)
-    if not ok or type(packet)~='table' then return end
-    local category,param=packet['Category'],packet['Param']
-    if settings.debug and
-        (tonumber(category)==9 or category=='Job ability usage') then
-        msg('Pet action 0x01A: category='..tostring(category)..
-            ' param='..tostring(param)..' (Release resource ID 90)')
-    end
-    if releases:observe(category,param,s.pet_id,os.clock())
-        and settings.debug then
-        msg('Release action observed; awaiting disappearance')
-    end
 end)
 windower.register_event('status change',function(code)
     s.in_cs=code==4
