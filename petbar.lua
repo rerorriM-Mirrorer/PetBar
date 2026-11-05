@@ -1,0 +1,447 @@
+-- PetBar Test 1: independent SMN avatar HP and TP HUD.
+-- The vendored ffxiGauge/healthMotion/ghostMotion/animationSettings modules
+-- preserve EnemyBar2's native animation behavior and attribution.
+_addon.name='PetBar'
+_addon.author='A'
+_addon.version='0.1.0-test1'
+_addon.language='English'
+_addon.commands={'pb','petbar'}
+
+local config=require('config')
+local texts=require('texts')
+local packets=require('packets')
+require('chat')
+local gauge=require('ffxiGauge')
+local anim=require('animationSettings')
+
+local avatar_names={}
+for _,name in ipairs({'Carbuncle','Ifrit','Shiva','Garuda','Titan',
+    'Ramuh','Leviathan','Fenrir','Diabolos','Cait Sith','Siren'}) do
+    avatar_names[name:lower()]=true
+end
+local function is_avatar(name)
+    return type(name)=='string' and avatar_names[name:lower()] or false
+end
+local defaults={
+    visible=true,locked=false,layout='vertical',
+    pos={x=-1,y=-1},width=260,gap=6,scale=1,font_size=13,
+    effects={damage_trail=true,ghost_hit=true,hit_shake=true,
+        healing_effect=true,text_effect=true,low_hp_pulse=true,
+        animation_duration=.18,trail_delay=1.5,trail_duration=.45,
+        heal_duration=.35,text_duration=.22,
+        trail_color={red=167,green=57,blue=96,alpha=175}}
+}
+local settings=config.load(defaults)
+settings.pos=settings.pos or {x=-1,y=-1}
+settings.effects=settings.effects or defaults.effects
+local s={pet=nil,pet_id=nil,pet_index=nil,hpp=nil,tp=nil,
+    last_packet_hp=-999,death_at=nil,last_scan=-999,preview=nil,
+    in_cs=false,stopping=false,drag=nil,ctrl={},ctrl_down=false,
+    ui_w=nil,ui_h=nil}
+local hp,tp,caption,tp_label
+local x,y,width,total_w,total_h=0,0,260,262,50
+local visible=false
+
+local function clamp(v,lo,hi) return math.max(lo,math.min(hi,v)) end
+local function rnd(v) return math.floor(v+.5) end
+local function dimensions()
+    local u=windower.get_windower_settings() or {}
+    return tonumber(u.ui_x_res or u.x_res) or 1280,
+        tonumber(u.ui_y_res or u.y_res) or 720
+end
+local function msg(value,bad)
+    windower.add_to_chat(0,('PetBar'):color(167)..(' -> '):color(200)..
+        tostring(value):color(bad and 123 or 207))
+end
+local function save() config.save(settings) end
+local function eligible(p)
+    return p and (p.main_job=='SMN' or p.sub_job=='SMN')
+end
+local function pet_entity(p)
+    if not eligible(p) then return nil end
+    local index=p.mob and tonumber(p.mob.pet_index)
+    local pet=windower.ffxi.get_mob_by_target('pet')
+    if index and index>0 then
+        local owned=windower.ffxi.get_mob_by_index(index)
+        if owned and is_avatar(owned.name) then return owned end
+        if pet and pet.index~=index then pet=nil end
+    end
+    return pet and is_avatar(pet.name) and pet or nil
+end
+local function reset(clear)
+    s.pet,s.pet_id,s.pet_index,s.hpp,s.tp,s.death_at=nil,nil,nil,nil,nil,nil
+    s.last_packet_hp=-999
+    if clear then gauge.clear_ghosts() end
+end
+local function options(istp)
+    local e=anim.snapshot(settings.effects)
+    for k,v in pairs(settings.effects) do if e[k]==nil then e[k]=v end end
+    e.healing_effect,e.text_effect=true,true
+    if istp then
+        e.hit_shake,e.ghost_hit,e.low_hp_pulse,e.damage_trail=false,false,false,false
+        e.trail_color={red=41,green=91,blue=167,alpha=160}
+    else
+        e.trail_color=settings.effects.trail_color or
+            {red=167,green=57,blue=96,alpha=175}
+    end
+    return {
+        animation_duration=settings.effects.animation_duration or .18,
+        damage_trail=e.damage_trail,trail_delay=settings.effects.trail_delay or 1.5,
+        trail_duration=settings.effects.trail_duration or .45,
+        trail_color=e.trail_color,ghost_hit=e.ghost_hit,
+        effects=e,ghost_options=e,main_bar=true,
+        recovery_color=istp and {red=74,green=168,blue=255} or nil,
+        recovery_edge_color=istp and {red=164,green=222,blue=255} or nil,
+        recovery_trail_color=istp and {red=95,green=173,blue=247} or nil
+    }
+end
+local function make_text(r,g,b,bold)
+    return texts.new('',{
+        pos={x=0,y=0},bg={visible=false},padding=0,
+        flags={draggable=false,bold=bold,italic=true},
+        text={font='Arial',size=settings.font_size,
+            red=r,green=g,blue=b,alpha=255,
+            stroke={width=2,alpha=180,red=12,green=12,blue=12}}
+    })
+end
+local function hide()
+    visible=false
+    if hp then hp:hide() end
+    if tp then tp:hide() end
+    if caption then caption:hide() end
+    if tp_label then tp_label:hide() end
+end
+local function dispose()
+    hide()
+    gauge.clear_ghosts()
+    if hp then hp:destroy();hp=nil end
+    if tp then tp:destroy();tp=nil end
+    if caption then caption:destroy();caption=nil end
+    if tp_label then tp_label:destroy();tp_label=nil end
+end
+local function position()
+    if not hp then return end
+    local uw,uh=dimensions()
+    local scale=clamp(tonumber(settings.scale) or 1,.65,2)
+    local gap=rnd((tonumber(settings.gap) or 6)*scale)
+    local requested=math.max(60,rnd((tonumber(settings.width) or 260)*scale))
+    local available=settings.layout=='horizontal' and
+        math.floor((uw-24-gap)/2) or uw-24
+    width=math.max(16,math.min(requested,available))
+    total_w=settings.layout=='horizontal' and (2*(width+2)+gap) or width+2
+    local bar_h=settings.layout=='horizontal' and 12 or 24+gap
+    total_h=bar_h+math.max(8,rnd(settings.font_size*scale))+8
+    local base_x=math.floor((uw-total_w)/2)
+    local base_y=math.max(0,math.floor(uh-145*scale))
+    local px=tonumber(settings.pos.x)
+    local py=tonumber(settings.pos.y)
+    x=clamp(rnd(px and px>=0 and px or base_x),0,math.max(0,uw-total_w))
+    y=clamp(rnd(py and py>=0 and py or base_y),0,math.max(0,uh-total_h))
+    s.ui_w,s.ui_h=uw,uh
+    hp:move(x,y)
+    tp:move(settings.layout=='horizontal' and x+width+2+gap or x,
+        settings.layout=='horizontal' and y or y+12+gap)
+    caption:pos(x+3,y+bar_h+2)
+    tp_label:pos(x+total_w-rnd(75*scale),y+bar_h+2)
+    caption:size(math.max(8,rnd(settings.font_size*scale)))
+    tp_label:size(math.max(8,rnd(settings.font_size*scale)))
+end
+local function rebuild()
+    local was_visible=visible
+    dispose()
+    -- Layout determines native gauge widths; gauges always remain equal.
+    local uw=dimensions()
+    local scale=clamp(tonumber(settings.scale) or 1,.65,2)
+    local gap=rnd((tonumber(settings.gap) or 6)*scale)
+    local max_width=settings.layout=='horizontal' and
+        math.floor((uw-24-gap)/2) or uw-24
+    width=math.max(16,math.min(rnd(settings.width*scale),max_width))
+    hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
+    tp=gauge.new(width,{red=105,green=165,blue=242,alpha=255},options(true))
+    caption=make_text(245,238,242,true)
+    tp_label=make_text(177,211,255,false)
+    position()
+    hp:set_value((s.hpp or 100)/100,true)
+    tp:set_value((s.tp or 0)/3000,true)
+    if was_visible then
+        hp:show();tp:show();caption:show();tp_label:show()
+        visible=true
+    end
+end
+local function show(yes)
+    if visible==yes then return end
+    visible=yes
+    if not hp then return end
+    if yes then
+        hp:show();tp:show();caption:show();tp_label:show()
+    else hide() end
+end
+local function scan(now)
+    local info=windower.ffxi.get_info()
+    local p=info and info.logged_in and windower.ffxi.get_player()
+    local pet=p and pet_entity(p)
+    if pet and pet.index and pet.id then
+        if pet.id~=s.pet_id or pet.index~=s.pet_index then
+            reset(true)
+            s.pet,s.pet_index,s.pet_id=pet.name,pet.index,pet.id
+            s.hpp=clamp(tonumber(pet.hpp) or 100,0,100)
+            hp:set_value(s.hpp/100,true)
+            tp:set_value(0,true)
+            if settings.debug then msg('Avatar acquired: '..pet.name) end
+        else
+            if now-s.last_packet_hp>.30 and type(pet.hpp)=='number' then
+                local v=clamp(pet.hpp,0,100)
+                if v~=s.hpp then
+                    s.hpp=v
+                    hp:set_value(v/100,false)
+                end
+            end
+        end
+        if s.hpp==0 and not s.death_at then s.death_at=now end
+        if s.hpp~=0 then s.death_at=nil end
+    elseif s.pet_index and (s.hpp~=0 or not s.death_at or now-s.death_at>.65) then
+        reset(false)
+    end
+    if s.death_at and now-s.death_at>.65 then reset(false) end
+end
+local function on_pet_packet(id,data)
+    if id~=0x067 and id~=0x068 then return end
+    local ok,p=pcall(packets.parse,'incoming',data)
+    if not ok or type(p)~='table' then return end
+    local player=windower.ffxi.get_player()
+    if not eligible(player) then return end
+    local owner,index=tonumber(p['Owner Index']),tonumber(p['Pet Index'])
+    if id==0x067 and tonumber(p['Message Type'])==4 then
+        owner,index=index,owner
+    end
+    if owner~=tonumber(player.index) or not index or index<=0 then return end
+    local pet=pet_entity(player)
+    if not pet or index~=pet.index then return end
+    if s.pet_index and s.pet_index~=index then return end
+    if not s.pet_index then
+        s.pet,s.pet_index,s.pet_id=pet.name,pet.index,pet.id
+        s.hpp=clamp(tonumber(pet.hpp) or 100,0,100)
+        hp:set_value(s.hpp/100,true)
+    end
+    local h=tonumber(p['Current HP%'])
+    if h and h>=0 and h<=100 and h~=s.hpp then
+        s.hpp=h
+        s.last_packet_hp=os.clock()
+        hp:set_value(h/100,false)
+        s.death_at=h==0 and os.clock() or nil
+    end
+    local value=tonumber(p['Pet TP'])
+    if value and value>=0 and value<=3000 and value~=s.tp then
+        local prev=s.tp
+        s.tp=value
+        -- No shaking on TP spent; blue recovery animation on TP gain.
+        tp:set_value(value/3000,prev==nil or value<prev)
+    end
+end
+local function frame()
+    if not hp then return end
+    local now=os.clock()
+    gauge.update_ghosts()
+    local uw,uh=dimensions()
+    if uw~=s.ui_w or uh~=s.ui_h then position() end
+    if s.preview and now>=s.preview.expires then
+        s.preview=nil
+        hp:set_value((s.hpp or 100)/100,true)
+        tp:set_value((s.tp or 0)/3000,true)
+    end
+    if now-s.last_scan>=.10 and not s.preview then
+        s.last_scan=now;scan(now)
+    end
+    local should_show=settings.visible and not s.in_cs and
+        (s.preview~=nil or s.pet_index~=nil)
+    show(should_show)
+    if not should_show then return end
+    -- EnemyBar2 samples time-based shake, pulse, loss and recovery every frame.
+    hp:move(hp.x,hp.y)
+    tp:move(tp.x,tp.y)
+    local hv=hp.motion and hp.motion:sample().text_value*100 or s.hpp or 0
+    local tv=tp.motion and tp.motion:sample().text_value*3000 or s.tp or 0
+    caption:text((s.preview and 'Carbuncle' or s.pet or 'Avatar')..
+        ': '..rnd(clamp(hv,0,100))..'%')
+    tp_label:text('TP '..((s.preview or s.tp~=nil) and
+        tostring(rnd(clamp(tv,0,3000))) or '--'))
+end
+local function preview(kind)
+    kind=kind or 'show'
+    if kind=='off' then
+        s.preview=nil
+        hp:set_value((s.hpp or 100)/100,true)
+        tp:set_value((s.tp or 0)/3000,true)
+        msg('Preview off');return
+    end
+    if kind~='show' and kind~='hit' and kind~='heal' and kind~='tp' then
+        msg('Use //pb preview [show|hit|heal|tp|off].',true);return
+    end
+    if s.in_cs then msg('Preview unavailable during cutscenes.',true);return end
+    s.preview={expires=os.clock()+8}
+    show(true)
+    if kind=='hit' then
+        hp:set_value(.95,true);hp:set_value(.20,false)
+    elseif kind=='heal' then
+        hp:set_value(.25,true);hp:set_value(.82,false)
+    elseif kind=='tp' then
+        tp:set_value(.18,true);tp:set_value(.67,false)
+    else
+        hp:set_value(.82,true);tp:set_value(.45,true)
+    end
+    msg('Preview '..kind..' (8s); drag while unlocked')
+end
+local function help()
+    local function line(syntax,desc)
+        windower.add_to_chat(0,('//pb '):color(200)..syntax:color(207)..
+            (' -> '):color(200)..desc:color(0))
+    end
+    windower.add_to_chat(0,('----- PetBar | SMN -----'):color(140))
+    windower.add_to_chat(0,('GENERAL'):color(167))
+    line('help','BattleStations-style command list')
+    line('status','Version, avatar HP/TP, layout and position')
+    line('show | hide | auto','Automatic pet-conditional visibility or hide')
+    line('preview [show|hit|heal|tp|off]','Eight-second live HUD effects preview')
+    windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
+    line('layout <vertical|horizontal>','Equal-width HP/TP; vertical default')
+    line('width <60..800>','Base width for both gauges')
+    line('gap <0..40>','Space between gauges')
+    line('fontsize <8..24>','Caption font size')
+    line('scale <0.65..2>','Width, spacing and caption scale')
+    line('pos <x> <y> | resetpos','Save/recover screen-relative position')
+    line('lock | unlock','Disable/enable drag; Ctrl-drag snaps to 10px')
+    windower.add_to_chat(0,('ANIMATIONS & LIFECYCLE'):color(167))
+    line('shake [on|off] | ghost [on|off]','Toggle HP impact effects')
+    line('debug [on|off]','Log major avatar changes')
+    line('save | restart | unload','Save, or cleanly reload/unload once')
+end
+local function status()
+    msg('v'.._addon.version..' | '..settings.layout..
+        ' | '..(settings.visible and 'auto' or 'hidden')..
+        ' | '..(settings.locked and 'locked' or 'draggable'))
+    msg('Avatar '..(s.pet or 'none')..' | HP '..tostring(s.hpp or '--')..
+        '% | TP '..tostring(s.tp or '--')..
+        ' | cutscene '..tostring(s.in_cs))
+    msg('Position '..x..','..y..' | width '..width..
+        ' | scale '..settings.scale)
+end
+local function boolean_command(field,arg,target)
+    local v=target[field]
+    if arg=='on' then v=true
+    elseif arg=='off' then v=false
+    elseif arg==nil then v=not v
+    else msg('Expected on or off.',true);return end
+    target[field]=v
+    save();rebuild()
+    msg(field..' '..(v and 'on' or 'off'))
+end
+local function command(cmd,...)
+    cmd=cmd and cmd:lower() or 'help'
+    local a={...}
+    if cmd=='help' then help();return end
+    if s.stopping or not hp then return end
+    if cmd=='status' then status();return end
+    if cmd=='restart' or cmd=='unload' then
+        s.stopping=true
+        dispose()
+        msg('Cleaned up; '..cmd..' requested')
+        windower.send_command('lua '..(cmd=='restart' and 'reload' or 'unload')..' PetBar')
+        return
+    end
+    if cmd=='save' then save();msg('Settings saved');return end
+    if cmd=='hide' or cmd=='show' or cmd=='auto' then
+        settings.visible=cmd~='hide';save()
+        msg(settings.visible and 'Automatic pet visibility enabled' or 'HUD hidden')
+        return
+    end
+    if cmd=='preview' then preview(a[1] and a[1]:lower());return end
+    if cmd=='lock' or cmd=='unlock' then
+        settings.locked=cmd=='lock';save()
+        msg(settings.locked and 'Dragging locked' or 'Dragging unlocked')
+        return
+    end
+    if cmd=='layout' then
+        local value=a[1] and a[1]:lower()
+        if value~='vertical' and value~='horizontal' then
+            msg('Use //pb layout <vertical|horizontal>.',true);return
+        end
+        settings.layout=value;save();rebuild();msg('Layout '..value);return
+    end
+    if cmd=='shake' then boolean_command('hit_shake',a[1],settings.effects);return end
+    if cmd=='ghost' then boolean_command('ghost_hit',a[1],settings.effects);return end
+    if cmd=='debug' then boolean_command('debug',a[1],settings);return end
+    if cmd=='resetpos' then
+        settings.pos={x=-1,y=-1};save();position()
+        msg('Default position restored');return
+    end
+    local limits={width={60,800},gap={0,40},fontsize={8,24},scale={.65,2}}
+    if limits[cmd] then
+        local v=tonumber(a[1]);local range=limits[cmd]
+        if not v or v<range[1] or v>range[2] or
+            (cmd~='scale' and v~=math.floor(v)) then
+            msg('Use //pb '..cmd..' <'..range[1]..'..'..range[2]..'>.',true);return
+        end
+        settings[cmd=='fontsize' and 'font_size' or cmd]=v
+        save();rebuild();msg(cmd..' '..v);return
+    end
+    if cmd=='pos' then
+        local px,py=tonumber(a[1]),tonumber(a[2])
+        if not px or not py or px<0 or py<0 or
+            px~=math.floor(px) or py~=math.floor(py) then
+            msg('Use //pb pos <x> <y>.',true);return
+        end
+        settings.pos={x=px,y=py};save();position()
+        msg('Position '..x..','..y);return
+    end
+    msg('Unknown command '..cmd,true);help()
+end
+windower.register_event('load',function()
+    if not hp then rebuild() end
+    local p=windower.ffxi.get_player()
+    s.in_cs=p and p.status==4 or false
+end)
+windower.register_event('prerender',function()
+    if not s.stopping then frame() end
+end)
+windower.register_event('incoming chunk',function(id,data)
+    if hp and not s.stopping and not s.preview then on_pet_packet(id,data) end
+end)
+windower.register_event('status change',function(code)
+    s.in_cs=code==4
+    if s.in_cs then hide();gauge.clear_ghosts() end
+end)
+windower.register_event('zone change',function() reset(true);hide() end)
+windower.register_event('job change',function() reset(true);hide() end)
+windower.register_event('logout',function() reset(true);hide() end)
+windower.register_event('unload',function() dispose() end)
+windower.register_event('addon command',command)
+windower.register_event('keyboard',function(dik,down)
+    if dik==29 or dik==157 then
+        s.ctrl[dik]=down
+        s.ctrl_down=s.ctrl[29] or s.ctrl[157] or false
+    end
+end)
+windower.register_event('mouse',function(kind,mx,my,delta,blocked)
+    if blocked or settings.locked or not visible then return false end
+    local gap=rnd(settings.gap*settings.scale)
+    local box_height=settings.layout=='horizontal' and 12 or 24+gap
+    if kind==1 then
+        if mx>=x and mx<=x+total_w and my>=y and my<=y+box_height then
+            s.drag={mx=mx,my=my,x=x,y=y}
+            return true
+        end
+    elseif kind==0 and s.drag then
+        local px=s.drag.x+mx-s.drag.mx
+        local py=s.drag.y+my-s.drag.my
+        if s.ctrl_down then px=rnd(px/10)*10;py=rnd(py/10)*10 end
+        settings.pos.x,settings.pos.y=px,py
+        position()
+        return true
+    elseif kind==2 and s.drag then
+        s.drag=nil
+        settings.pos.x,settings.pos.y=x,y
+        save()
+        return true
+    end
+    return false
+end)
