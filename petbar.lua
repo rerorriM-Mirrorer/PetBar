@@ -14,6 +14,7 @@ require('chat')
 local gauge=require('ffxiGauge')
 local anim=require('animationSettings')
 local layout_model=require('layoutModel')
+local tp_renderer=require('tpRenderer')
 
 local summon_kinds=require('summonKinds')
 local is_avatar=summon_kinds.is_summon
@@ -150,12 +151,12 @@ local function rebuild()
     local g=layout_model.calculate(settings,uw,uh)
     width,tp_width=g.hp_width,g.tp_width
     hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
-    tp=gauge.new(tp_width,{red=105,green=165,blue=242,alpha=255},options(true))
+    tp=tp_renderer.new(tp_width,options)
     caption=make_text(245,238,242,true)
     tp_label=make_text(177,211,255,false)
     position()
     hp:set_value((s.hpp or 100)/100,true)
-    tp:set_value((s.tp or 0)/3000,true)
+    tp:set_value(s.tp,true)
     if was_visible then
         hp:show();tp:show();caption:show();tp_label:show()
         visible=true
@@ -179,7 +180,7 @@ local function scan(now)
             s.pet,s.pet_index,s.pet_id=pet.name,pet.index,pet.id
             s.hpp=clamp(tonumber(pet.hpp) or 100,0,100)
             hp:set_value(s.hpp/100,true)
-            tp:set_value(0,true)
+            tp:set_value(nil,true)
             if settings.debug then msg('Avatar acquired: '..pet.name) end
         else
             if now-s.last_packet_hp>.30 and type(pet.hpp)=='number' then
@@ -228,7 +229,7 @@ local function on_pet_packet(id,data)
         local prev=s.tp
         s.tp=value
         -- No shaking on TP spent; blue recovery animation on TP gain.
-        tp:set_value(value/3000,prev==nil or value<prev)
+        tp:set_value(value,prev==nil or value<prev)
     end
 end
 local function frame()
@@ -240,7 +241,7 @@ local function frame()
     if s.preview and now>=s.preview.expires then
         s.preview=nil
         hp:set_value((s.hpp or 100)/100,true)
-        tp:set_value((s.tp or 0)/3000,true)
+        tp:set_value(s.tp,true)
     end
     if now-s.last_scan>=.10 and not s.preview then
         s.last_scan=now;scan(now)
@@ -253,34 +254,43 @@ local function frame()
     hp:move(hp.x,hp.y)
     tp:move(tp.x,tp.y)
     local hv=hp.motion and hp.motion:sample().text_value*100 or s.hpp or 0
-    local tv=tp.motion and tp.motion:sample().text_value*3000 or s.tp or 0
+    local tv=tp:text_value(now)
     caption:text((s.preview and 'Carbuncle' or s.pet or 'Avatar')..
         ': '..rnd(clamp(hv,0,100))..'%')
-    tp_label:text('TP '..((s.preview or s.tp~=nil) and
-        tostring(rnd(clamp(tv,0,3000))) or '--'))
+    tp_label:text('TP '..(tv and tostring(rnd(clamp(tv,0,3000))) or '--'))
 end
-local function preview(kind)
+local function preview(kind,raw_tp)
     kind=kind or 'show'
     if kind=='off' then
         s.preview=nil
         hp:set_value((s.hpp or 100)/100,true)
-        tp:set_value((s.tp or 0)/3000,true)
+        tp:set_value(s.tp,true)
         msg('Preview off');return
     end
     if kind~='show' and kind~='hit' and kind~='heal' and kind~='tp' then
         msg('Use //pb preview [show|hit|heal|tp|off].',true);return
     end
     if s.in_cs then msg('Preview unavailable during cutscenes.',true);return end
+    local chosen=raw_tp and tonumber(raw_tp)
+    if kind=='tp' and raw_tp and (not chosen or chosen<0 or chosen>3000
+        or chosen~=math.floor(chosen)) then
+        msg('Use //pb preview tp [0..3000].',true);return
+    end
     s.preview={expires=os.clock()+8}
     show(true)
+    if kind~='tp' then tp:set_value(1450,true) end
     if kind=='hit' then
         hp:set_value(.95,true);hp:set_value(.20,false)
     elseif kind=='heal' then
         hp:set_value(.25,true);hp:set_value(.82,false)
     elseif kind=='tp' then
-        tp:set_value(.18,true);tp:set_value(.67,false)
+        if chosen then tp:set_value(chosen,true)
+        else
+            -- Cross the first 1000-TP boundary, revealing a pulsing lower tier.
+            tp:set_value(850,true);tp:set_value(1460,false)
+        end
     else
-        hp:set_value(.82,true);tp:set_value(.45,true)
+        hp:set_value(.82,true)
     end
     msg('Preview '..kind..' (8s); drag while unlocked')
 end
@@ -295,6 +305,7 @@ local function help()
     line('status','Version, avatar HP/TP, layout and position')
     line('show | hide | auto','Automatic pet-conditional visibility or hide')
     line('preview [show|hit|heal|tp|off]','Eight-second live HUD effects preview')
+    line('preview tp [0..3000]','Inspect 1000/2000/3000 TP layers and pulses')
     windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
     line('layout <vertical|horizontal>','Equal-width HP/TP; vertical default')
     line('width <60..800>','Set both gauges; reset individual overrides')
@@ -357,7 +368,7 @@ local function command(cmd,...)
         msg(settings.visible and 'Automatic pet visibility enabled' or 'HUD hidden')
         return
     end
-    if cmd=='preview' then preview(a[1] and a[1]:lower());return end
+    if cmd=='preview' then preview(a[1] and a[1]:lower(),a[2]);return end
     if cmd=='lock' or cmd=='unlock' then
         settings.locked=cmd=='lock';save()
         msg(settings.locked and 'Dragging locked' or 'Dragging unlocked')
