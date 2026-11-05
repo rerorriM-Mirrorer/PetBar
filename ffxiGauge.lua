@@ -6,6 +6,7 @@ local animation_settings=require('animationSettings')
 local ghost_motion=require('ghostMotion')
 local underbar_motion=require('underbarMotion')
 local death_spark=require('deathSpark')
+local transition_colors=require('transitionColors')
 local gauge = {}
 local ghosts = {}
 local methods = {}
@@ -94,7 +95,46 @@ function gauge.new(width, color, options)
     return self
 end
 
+-- Snapshot the *intrinsic* colors of each image before a fade. On the next
+-- update we restore them, so the independent HP loss, TP cyan, healing flare,
+-- and 3000 flash effects never get progressively bleached or dimmed.
+local transition_groups={
+    'trough','fill','trail','trail_glow','critical_fill','flash_fill','heal_glow'
+}
+function methods:restore_transition()
+    if not self.transition_original then return end
+    for _,saved in ipairs(self.transition_original) do
+        saved.part:color(saved.red,saved.green,saved.blue)
+        saved.part:alpha(saved.alpha)
+    end
+    self.transition_original=nil
+end
+
+function methods:set_transition(opacity,whitening)
+    self:restore_transition()
+    opacity=math.max(0,math.min(1,tonumber(opacity) or 1))
+    whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
+    if opacity==1 and whitening==0 then return end
+    local originals={}
+    for _,name in ipairs(transition_groups) do
+        for _,part in ipairs(self[name] or {}) do
+            local red,green,blue=part:color()
+            local alpha=part:alpha()
+            originals[#originals+1]={
+                part=part,red=red,green=green,blue=blue,alpha=alpha
+            }
+            local result=transition_colors.apply({
+                red=red,green=green,blue=blue,alpha=alpha
+            },{alpha=opacity,whiten=whitening})
+            part:color(result.red,result.green,result.blue)
+            part:alpha(result.alpha)
+        end
+    end
+    self.transition_original=originals
+end
+
 function methods:move(x, y)
+    self:restore_transition()
     -- PetBar updates only on observed pet changes; progress unfinished animations
     -- every rendered frame rather than requiring a second HP/TP packet.
     self:advance()
@@ -192,6 +232,7 @@ function methods:layout_parts(parts, value, offset, offset_x)
 end
 
 function methods:layout_fill()
+    self:restore_transition()
     if self.trail then self:layout_parts(self.trail,self.trail_value) end
     self:layout_parts(self.fill,self.value,self.feedback and self.feedback.offset or 0,
         self.feedback and self.feedback.offset_x or 0)
@@ -380,6 +421,7 @@ function methods:hover(x, y)
 end
 
 function methods:destroy()
+    self:restore_transition()
     for _, part in ipairs(self.trough) do part:destroy() end
     for _, part in ipairs(self.fill) do part:destroy() end
     for _, part in ipairs(self.trail or {}) do part:destroy() end
