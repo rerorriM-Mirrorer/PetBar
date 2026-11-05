@@ -36,6 +36,8 @@ function gauge.new(width, color, options)
         fill_only=options.fill_only or false, pulse_active=false,
         pulse_strength=options.pulse_strength or 0,
         pulse_period=options.pulse_period or .6,
+        full_flash_enabled=options.full_flash_enabled or false,
+        pulse_style=nil, flash_on=false,
     }, methods)
     if options.effects then self.motion=health_motion.new(options.effects,self.clock) end
     -- The shell is deliberately neutral, independent of the resource tint.
@@ -64,6 +66,13 @@ function gauge.new(width, color, options)
         image('fill_left', color), image('fill_mid', color),
         image('fill_right', color),
     }
+    -- A neutral silhouette is needed for full-TP white/black flashes.
+    -- The regular native fill sprite has a cyan cast even when tinted white.
+    if self.full_flash_enabled then
+        local neutral={red=255,green=255,blue=255,alpha=255}
+        self.flash_fill={image('ghost_fill_left',neutral),
+            image('ghost_fill_mid',neutral),image('ghost_fill_right',neutral)}
+    end
     -- Main-bar recovery ornaments sit above the fill so the white moving edge
     -- remains visible. Secondary bars retain their established healing motion.
     if options.main_bar and self.motion and options.effects.healing_effect and self.ghost_options.healing_glow then
@@ -187,6 +196,9 @@ function methods:layout_fill()
         self:layout_parts(self.critical_fill,self.value,self.feedback and self.feedback.offset or 0,
             self.feedback and self.feedback.offset_x or 0)
     end
+    if self.flash_fill then
+        self:layout_parts(self.flash_fill,self.value,0,0)
+    end
     if self.feedback then
         local fill=health_motion.mix(self.color,{red=255,green=255,blue=255},self.feedback.white)
         for _,p in ipairs(self.fill) do
@@ -203,15 +215,30 @@ function methods:layout_fill()
             p:alpha(self.active_trail_alpha)
         end
     end
-    -- Completed TP tiers retain their own subtle pulse under newer overlays.
-    -- HP never opts into pulse_strength; this cannot change its native effects.
-    if self.pulse_active and self.pulse_strength>0 and
-        not (self.feedback and self.feedback.healing) then
-        local phase=(1-math.cos(2*math.pi*self.clock()/self.pulse_period))/2
-        local glow=health_motion.mix(self.color,{red=210,green=238,blue=255},
-            self.pulse_strength*phase)
-        for _,part in ipairs(self.fill) do
-            part:color(glow.red,glow.green,glow.blue)
+    -- TP has two independent effects: a completed underlay pulses beneath
+    -- the semitransparent gain fill, and full 3000 TP alternates a single
+    -- neutral silhouette against the darkest blue. HP never enters this path.
+    self.flash_on=false
+    if self.pulse_active and self.pulse_style then
+        local style=self.pulse_style
+        local period=math.max(.05,style.period or .8)
+        if style.mode=='fullflash' then
+            self.flash_on=(self.clock()%period)>=period/2
+        elseif not (self.feedback and self.feedback.healing) then
+            local phase=(1-math.cos(2*math.pi*self.clock()/period))/2
+            local glow=health_motion.mix(style.from or self.color,
+                style.to or {red=220,green=244,blue=255},phase)
+            for _,part in ipairs(self.fill) do
+                part:color(glow.red,glow.green,glow.blue)
+            end
+        end
+    end
+    if self.flash_fill then
+        local target=(self.pulse_style and self.pulse_style.target) or
+            {red=255,green=255,blue=255}
+        for _,part in ipairs(self.flash_fill) do
+            part:color(target.red,target.green,target.blue)
+            part:alpha(self.flash_on and (self.color.alpha or 255) or 0)
         end
     end
     self:layout_trail_glow()
@@ -296,6 +323,9 @@ function methods:refresh_visibility()
     for _,part in ipairs(self.critical_fill or {}) do
         part:visible(self.visible and part:width()>0 and self.value>0 and white or false)
     end
+    for _,part in ipairs(self.flash_fill or {}) do
+        part:visible(self.visible and self.flash_on and self.value>0 and part:width()>0)
+    end
     for _, part in ipairs(self.trail or {}) do
         part:visible(self:trail_visible() and part:width()>0)
     end
@@ -313,8 +343,16 @@ function methods:refresh_visibility()
     end
 end
 
-function methods:set_pulse(active)
+function methods:set_color(color)
+    -- Applies only to this gauge's foreground; the native neutral shell stays.
+    self.color={red=color.red,green=color.green,blue=color.blue,
+        alpha=color.alpha or self.color.alpha or 255}
+    self:layout_fill()
+end
+function methods:set_pulse(active,style)
     self.pulse_active=active==true
+    self.pulse_style=active and style or nil
+    if not active then self.flash_on=false end
 end
 
 function methods:show()
@@ -344,6 +382,7 @@ function methods:destroy()
     for _, part in ipairs(self.trail or {}) do part:destroy() end
     for _, part in ipairs(self.trail_glow or {}) do part:destroy() end
     for _, part in ipairs(self.critical_fill or {}) do part:destroy() end
+    for _, part in ipairs(self.flash_fill or {}) do part:destroy() end
     for _, part in ipairs(self.heal_glow or {}) do part:destroy() end
 end
 
