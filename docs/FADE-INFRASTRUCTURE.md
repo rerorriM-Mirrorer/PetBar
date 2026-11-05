@@ -1,3 +1,9 @@
+# PetBar transitions — provenance and integration status
+
+**2026-11-04 update:** This document originally described the intentionally dormant fade modules on `dev/pet-fade-infrastructure-2026-11-04`. That historical stage remains accurately recorded below. The newer **`dev/pet-fade-live-test3-2026-11-04`** branch now imports those modules into `petbar.lua`, adds a conservative owner-scoped Release detector and full renderer/text-stroke tinting, and supplies `//pb preview death` / `//pb preview release`. For current setup and unverified checks, read root `README.md` and the newest section of `TESTING.md` first. **No live FFXI acceptance of the integrated fade has yet been reported.**
+
+---
+
 # PetBar transitions: dormant infrastructure
 
 This code is staged separately on `dev/pet-fade-infrastructure-2026-11-04`, based on the Test 2 checkpoint. Neither `petbar.lua` nor the native renderer imports it yet. Installing the user-tested Test 2 branch has **no change** to fade behavior.
