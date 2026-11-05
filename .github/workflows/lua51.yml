@@ -1,0 +1,23 @@
+name: PetBar Lua 5.1 static and model checks
+
+on:
+  push:
+    branches:
+      - 'dev/smn-test2-2026-11-04'
+  workflow_dispatch:
+
+jobs:
+  lua51:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Parse every Lua source with Lua 5.1
+        run: find . -type f -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
+      - name: Run source-level model tests
+        run: |
+          for test in tests/*_spec.lua; do
+            echo "Running $test"
+            lua5.1 "$test"
+          done
