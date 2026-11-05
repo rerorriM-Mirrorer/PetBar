@@ -13,6 +13,7 @@ local packets=require('packets')
 require('chat')
 local gauge=require('ffxiGauge')
 local anim=require('animationSettings')
+local layout_model=require('layoutModel')
 
 local avatar_names={}
 for _,name in ipairs({'Carbuncle','Ifrit','Shiva','Garuda','Titan',
@@ -24,7 +25,10 @@ local function is_avatar(name)
 end
 local defaults={
     visible=true,locked=false,layout='vertical',
-    pos={x=-1,y=-1},width=260,gap=6,scale=1,font_size=13,
+    pos={x=-1,y=-1},width=260,hp_width=0,tp_width=0,
+    gap=6,scale=1,font_size=13,
+    offsets={hp={x=0,y=0},tp={x=0,y=0},
+        name={x=0,y=0},tptext={x=0,y=0}},
     effects={damage_trail=true,ghost_hit=true,hit_shake=true,
         healing_effect=true,text_effect=true,low_hp_pulse=true,
         animation_duration=.18,trail_delay=1.5,trail_duration=.45,
@@ -34,12 +38,22 @@ local defaults={
 local settings=config.load(defaults)
 settings.pos=settings.pos or {x=-1,y=-1}
 settings.effects=settings.effects or defaults.effects
+-- Merge new fields into older saved configurations without moving anyone's HUD.
+settings.offsets=settings.offsets or {}
+for key,initial in pairs(defaults.offsets) do
+    settings.offsets[key]=settings.offsets[key] or {}
+    local entry=settings.offsets[key]
+    if type(entry.x)~='number' then entry.x=initial.x end
+    if type(entry.y)~='number' then entry.y=initial.y end
+end
+settings.hp_width=tonumber(settings.hp_width) or 0
+settings.tp_width=tonumber(settings.tp_width) or 0
 local s={pet=nil,pet_id=nil,pet_index=nil,hpp=nil,tp=nil,
     last_packet_hp=-999,death_at=nil,last_scan=-999,preview=nil,
     in_cs=false,stopping=false,drag=nil,ctrl={},ctrl_down=false,
     ui_w=nil,ui_h=nil}
 local hp,tp,caption,tp_label
-local x,y,width,total_w,total_h=0,0,260,262,50
+local x,y,width,tp_width,total_w,total_h=0,0,260,260,260,50
 local visible=false
 
 local function clamp(v,lo,hi) return math.max(lo,math.min(hi,v)) end
@@ -119,45 +133,30 @@ local function dispose()
     if caption then caption:destroy();caption=nil end
     if tp_label then tp_label:destroy();tp_label=nil end
 end
+-- Model returns resolved per-client geometry; render primitives stay unscaled
+-- vertically to preserve the native 12px EnemyBar2 art.
 local function position()
     if not hp then return end
     local uw,uh=dimensions()
-    local scale=clamp(tonumber(settings.scale) or 1,.65,2)
-    local gap=rnd((tonumber(settings.gap) or 6)*scale)
-    local requested=math.max(60,rnd((tonumber(settings.width) or 260)*scale))
-    local available=settings.layout=='horizontal' and
-        math.floor((uw-24-gap)/2) or uw-24
-    width=math.max(16,math.min(requested,available))
-    total_w=settings.layout=='horizontal' and (2*width+gap) or width
-    local bar_h=settings.layout=='horizontal' and 12 or 24+gap
-    total_h=bar_h+math.max(8,rnd(settings.font_size*scale))+8
-    local base_x=math.floor((uw-total_w)/2)
-    local base_y=math.max(0,math.floor(uh-145*scale))
-    local px=tonumber(settings.pos.x)
-    local py=tonumber(settings.pos.y)
-    x=clamp(rnd(px and px>=0 and px or base_x),0,math.max(0,uw-total_w))
-    y=clamp(rnd(py and py>=0 and py or base_y),0,math.max(0,uh-total_h))
+    local g=layout_model.calculate(settings,uw,uh)
+    x,y,width,tp_width,total_w,total_h=g.x,g.y,g.hp_width,g.tp_width,g.width,g.height
     s.ui_w,s.ui_h=uw,uh
-    hp:move(x,y)
-    tp:move(settings.layout=='horizontal' and x+width+gap or x,
-        settings.layout=='horizontal' and y or y+12+gap)
-    caption:pos(x+3,y+bar_h+2)
-    tp_label:pos(x+total_w-rnd(75*scale),y+bar_h+2)
-    caption:size(math.max(8,rnd(settings.font_size*scale)))
-    tp_label:size(math.max(8,rnd(settings.font_size*scale)))
+    s.boxes={g.hp,g.tp}
+    hp:move(g.hp.x,g.hp.y)
+    tp:move(g.tp.x,g.tp.y)
+    caption:pos(g.name.x,g.name.y)
+    tp_label:pos(g.tptext.x,g.tptext.y)
+    caption:size(g.font)
+    tp_label:size(g.font)
 end
 local function rebuild()
     local was_visible=visible
     dispose()
-    -- Layout determines native gauge widths; gauges always remain equal.
-    local uw=dimensions()
-    local scale=clamp(tonumber(settings.scale) or 1,.65,2)
-    local gap=rnd((tonumber(settings.gap) or 6)*scale)
-    local max_width=settings.layout=='horizontal' and
-        math.floor((uw-24-gap)/2) or uw-24
-    width=math.max(16,math.min(rnd(settings.width*scale),max_width))
+    local uw,uh=dimensions()
+    local g=layout_model.calculate(settings,uw,uh)
+    width,tp_width=g.hp_width,g.tp_width
     hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
-    tp=gauge.new(width,{red=105,green=165,blue=242,alpha=255},options(true))
+    tp=gauge.new(tp_width,{red=105,green=165,blue=242,alpha=255},options(true))
     caption=make_text(245,238,242,true)
     tp_label=make_text(177,211,255,false)
     position()
@@ -243,7 +242,7 @@ local function frame()
     local now=os.clock()
     gauge.update_ghosts()
     local uw,uh=dimensions()
-    if uw~=s.ui_w or uh~=s.ui_h then position() end
+    if uw~=s.ui_w or uh~=s.ui_h then rebuild() end
     if s.preview and now>=s.preview.expires then
         s.preview=nil
         hp:set_value((s.hpp or 100)/100,true)
@@ -304,7 +303,11 @@ local function help()
     line('preview [show|hit|heal|tp|off]','Eight-second live HUD effects preview')
     windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
     line('layout <vertical|horizontal>','Equal-width HP/TP; vertical default')
-    line('width <60..800>','Base width for both gauges')
+    line('width <60..800>','Set both gauges; reset individual overrides')
+    line('width <hp|tp> <60..800>','Independent base width per gauge')
+    line('offset <hp|tp|name|tptext> <x> <y>','Signed pixel offsets from their layout anchors')
+    line('offset <hp|tp|name|tptext>','Report one offset; bare reports all')
+    line('offset reset [hp|tp|name|tptext|all]','Recover individual/all offsets')
     line('gap <0..40>','Space between gauges')
     line('fontsize <8..24>','Caption font size')
     line('scale <0.65..2>','Width, spacing and caption scale')
@@ -322,7 +325,13 @@ local function status()
     msg('Avatar '..(s.pet or 'none')..' | HP '..tostring(s.hpp or '--')..
         '% | TP '..tostring(s.tp or '--')..
         ' | cutscene '..tostring(s.in_cs))
-    msg('Position '..x..','..y..' | width '..width..
+    msg('Position '..x..','..y..' | HP width '..width..
+        ' | TP width '..tp_width..
+        ' | offsets hp('..settings.offsets.hp.x..','..settings.offsets.hp.y..
+        ') tp('..settings.offsets.tp.x..','..settings.offsets.tp.y..
+        ') name('..settings.offsets.name.x..','..settings.offsets.name.y..
+        ') tptext('..settings.offsets.tptext.x..','..settings.offsets.tptext.y..
+        ')'..
         ' | scale '..settings.scale)
 end
 local function boolean_command(field,arg,target)
@@ -374,7 +383,74 @@ local function command(cmd,...)
         settings.pos={x=-1,y=-1};save();position()
         msg('Default position restored');return
     end
-    local limits={width={60,800},gap={0,40},fontsize={8,24},scale={.65,2}}
+    if cmd=='width' then
+        local role=(a[1] or 'both'):lower()
+        local raw=a[2]
+        if role~='hp' and role~='tp' and role~='both' then
+            raw=a[1];role='both'
+        end
+        if raw==nil then
+            msg('Widths: HP '..tostring(settings.hp_width>0 and settings.hp_width or settings.width)..
+                ', TP '..tostring(settings.tp_width>0 and settings.tp_width or settings.width))
+            return
+        end
+        local v=tonumber(raw)
+        if not v or v<60 or v>800 or v~=math.floor(v) then
+            msg('Use //pb width [hp|tp] <60..800>.',true);return
+        end
+        if role=='both' then
+            settings.width=v
+            settings.hp_width,settings.tp_width=0,0
+        else
+            settings[role..'_width']=v
+        end
+        save();rebuild()
+        msg((role=='both' and 'Both widths' or role:upper()..' width')..' '..v)
+        return
+    end
+    if cmd=='offset' then
+        local roles={'hp','tp','name','tptext'}
+        local function mapped(value)
+            if value=='pet' then return 'name' end
+            if value=='value' or value=='tpnumber' then return 'tptext' end
+            return value
+        end
+        local function show_offset(role)
+            local p=settings.offsets[role]
+            msg(role..' offset x='..p.x..' y='..p.y)
+        end
+        local role=mapped(a[1] and a[1]:lower())
+        if not role then
+            for _,key in ipairs(roles) do show_offset(key) end
+            return
+        end
+        if role=='reset' then
+            local target=mapped(a[2] and a[2]:lower()) or 'all'
+            if target~='all' and not settings.offsets[target] then
+                msg('Use //pb offset reset [hp|tp|name|tptext|all].',true);return
+            end
+            for _,key in ipairs(roles) do
+                if target=='all' or target==key then
+                    settings.offsets[key].x,settings.offsets[key].y=0,0
+                end
+            end
+            save();position()
+            msg('Offset reset '..target);return
+        end
+        if not settings.offsets[role] then
+            msg('Choose hp, tp, name, or tptext.',true);return
+        end
+        if not a[2] and not a[3] then show_offset(role);return end
+        local dx,dy=tonumber(a[2]),tonumber(a[3])
+        if not dx or not dy or dx~=math.floor(dx) or dy~=math.floor(dy)
+            or dx < -1000 or dx>1000 or dy < -1000 or dy>1000 then
+            msg('Use //pb offset '..role..' <x -1000..1000> <y -1000..1000>.',true)
+            return
+        end
+        settings.offsets[role].x,settings.offsets[role].y=dx,dy
+        save();position();show_offset(role);return
+    end
+    local limits={gap={0,40},fontsize={8,24},scale={.65,2}}
     if limits[cmd] then
         local v=tonumber(a[1]);local range=limits[cmd]
         if not v or v<range[1] or v>range[2] or
@@ -423,12 +499,12 @@ windower.register_event('keyboard',function(dik,down)
 end)
 windower.register_event('mouse',function(kind,mx,my,delta,blocked)
     if blocked or settings.locked or not visible then return false end
-    local gap=rnd(settings.gap*settings.scale)
-    local box_height=settings.layout=='horizontal' and 12 or 24+gap
     if kind==1 then
-        if mx>=x and mx<=x+total_w and my>=y and my<=y+box_height then
-            s.drag={mx=mx,my=my,x=x,y=y}
-            return true
+        for _,b in ipairs(s.boxes or {}) do
+            if mx>=b.x and mx<=b.x+b.width and my>=b.y and my<=b.y+12 then
+                s.drag={mx=mx,my=my,x=x,y=y}
+                return true
+            end
         end
     elseif kind==0 and s.drag then
         local px=s.drag.x+mx-s.drag.mx
