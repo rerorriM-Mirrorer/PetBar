@@ -34,12 +34,8 @@ function gauge.new(width, color, options)
         ghost_hit=options.ghost_hit or false,
         ghost_options=animation_settings.snapshot(options.ghost_options or options.effects or options),
         trail_delay=options.trail_delay or 1.5, trail_duration=options.trail_duration or .45,
-        fill_only=options.fill_only or false, pulse_active=false,
-        pulse_strength=options.pulse_strength or 0,
-        pulse_period=options.pulse_period or .6,
+        fill_only=options.fill_only or false,
         blink_period=nil,blink_alpha=1,
-        full_flash_enabled=options.full_flash_enabled or false,
-        pulse_style=nil, flash_on=false,
     }, methods)
     if options.effects then self.motion=health_motion.new(options.effects,self.clock) end
     -- The shell is deliberately neutral, independent of the resource tint.
@@ -68,21 +64,6 @@ function gauge.new(width, color, options)
         image('fill_left', color), image('fill_mid', color),
         image('fill_right', color),
     }
-    -- Native fill/trough art has its own baked colors. At release, a neutral
-    -- silhouette covers their tinted end caps so the *whole* bar reads white.
-    local white={red=255,green=255,blue=255,alpha=0}
-    self.release_mask={
-        image('ghost_fill_left',white),
-        image('ghost_fill_mid',white),
-        image('ghost_fill_right',white),
-    }
-    -- A neutral silhouette is needed for full-TP white/black flashes.
-    -- The regular native fill sprite has a cyan cast even when tinted white.
-    if self.full_flash_enabled then
-        local neutral={red=255,green=255,blue=255,alpha=255}
-        self.flash_fill={image('ghost_fill_left',neutral),
-            image('ghost_fill_mid',neutral),image('ghost_fill_right',neutral)}
-    end
     -- Main-bar recovery ornaments sit above the fill so the white moving edge
     -- remains visible. Secondary bars retain their established healing motion.
     if options.main_bar and self.motion and options.effects.healing_effect and self.ghost_options.healing_glow then
@@ -108,7 +89,7 @@ end
 -- update we restore them, so the independent HP loss, TP cyan, healing flare,
 -- and 3000 flash effects never get progressively bleached or dimmed.
 local transition_groups={
-    'trough','fill','trail','trail_glow','critical_fill','flash_fill','heal_glow'
+    'trough','fill','trail','trail_glow','critical_fill','heal_glow'
 }
 function methods:restore_transition()
     if not self.transition_original then return end
@@ -126,10 +107,7 @@ function methods:set_transition(opacity,whitening)
     -- Multiply by the regular summon-entry/exit fade; never mix colors.
     opacity=opacity*(self.blink_alpha or 1)
     whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
-    if opacity==1 and whitening==0 then
-        for _,part in ipairs(self.release_mask) do part:visible(false) end
-        return
-    end
+    if opacity==1 and whitening==0 then return end
     local originals={}
     for _,name in ipairs(transition_groups) do
         for _,part in ipairs(self[name] or {}) do
@@ -146,11 +124,6 @@ function methods:set_transition(opacity,whitening)
         end
     end
     self.transition_original=originals
-    local mask_alpha=math.floor(255*opacity*whitening+.5)
-    for _,part in ipairs(self.release_mask) do
-        part:alpha(mask_alpha)
-        part:visible(self.visible and mask_alpha>0)
-    end
 end
 
 function methods:move(x, y)
@@ -168,12 +141,6 @@ function methods:move(x, y)
     self.trough[2]:size(self.width-12, 12)
     self.trough[3]:pos(sx+self.width-6, y+shake)
     self.trough[3]:size(6, 12)
-    for i,part in ipairs(self.release_mask) do
-        local px=i==1 and 0 or i==2 and 6 or self.width-6
-        local pw=i==2 and self.width-12 or 6
-        part:pos(sx+px,y+shake)
-        part:size(pw,12)
-    end
     self:layout_fill()
 end
 
@@ -266,9 +233,6 @@ function methods:layout_fill()
         self:layout_parts(self.critical_fill,self.value,self.feedback and self.feedback.offset or 0,
             self.feedback and self.feedback.offset_x or 0)
     end
-    if self.flash_fill then
-        self:layout_parts(self.flash_fill,self.value,0,0)
-    end
     if self.feedback then
         local fill=health_motion.mix(self.color,{red=255,green=255,blue=255},self.feedback.white)
         for _,p in ipairs(self.fill) do
@@ -292,10 +256,6 @@ function methods:layout_fill()
     if self.blink_period and self.blink_period>0 then
         local phase=(self.clock()%self.blink_period)/self.blink_period
         self.blink_alpha=phase<.5 and 1 or 0
-    end
-    self.flash_on=false
-    if self.flash_fill then
-        for _,part in ipairs(self.flash_fill) do part:alpha(0) end
     end
     self:layout_trail_glow()
     self:layout_heal_glow()
@@ -369,9 +329,6 @@ function methods:trail_visible()
 end
 
 function methods:refresh_visibility()
-    for _,part in ipairs(self.release_mask) do
-        if not self.visible then part:visible(false) end
-    end
     for _, part in ipairs(self.trough) do
         part:visible(self.visible and not self.fill_only and part:width() > 0)
     end
@@ -381,9 +338,6 @@ function methods:refresh_visibility()
     end
     for _,part in ipairs(self.critical_fill or {}) do
         part:visible(self.visible and part:width()>0 and self.value>0 and white or false)
-    end
-    for _,part in ipairs(self.flash_fill or {}) do
-        part:visible(self.visible and self.flash_on and self.value>0 and part:width()>0)
     end
     for _, part in ipairs(self.trail or {}) do
         part:visible(self:trail_visible() and part:width()>0)
@@ -415,12 +369,6 @@ function methods:set_blink(period)
     if not self.blink_period then self.blink_alpha=1 end
 end
 
-function methods:set_pulse(active,style)
-    self.pulse_active=active==true
-    self.pulse_style=active and style or nil
-    if not active then self.flash_on=false end
-end
-
 function methods:show()
     self.visible = true
     self:advance()
@@ -446,11 +394,9 @@ function methods:destroy()
     self:restore_transition()
     for _, part in ipairs(self.trough) do part:destroy() end
     for _, part in ipairs(self.fill) do part:destroy() end
-    for _,part in ipairs(self.release_mask) do part:destroy() end
     for _, part in ipairs(self.trail or {}) do part:destroy() end
     for _, part in ipairs(self.trail_glow or {}) do part:destroy() end
     for _, part in ipairs(self.critical_fill or {}) do part:destroy() end
-    for _, part in ipairs(self.flash_fill or {}) do part:destroy() end
     for _, part in ipairs(self.heal_glow or {}) do part:destroy() end
 end
 
