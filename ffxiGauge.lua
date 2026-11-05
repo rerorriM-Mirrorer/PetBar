@@ -95,6 +95,9 @@ function gauge.new(width, color, options)
 end
 
 function methods:move(x, y)
+    -- PetBar updates only on observed pet changes; progress unfinished animations
+    -- every rendered frame rather than requiring a second HP/TP packet.
+    self:advance()
     self.x, self.y = x, y
     self.feedback=self.motion and self.motion:sample() or nil
     local shake=self.feedback and self.feedback.offset or 0
