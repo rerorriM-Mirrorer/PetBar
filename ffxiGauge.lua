@@ -37,6 +37,7 @@ function gauge.new(width, color, options)
         fill_only=options.fill_only or false, pulse_active=false,
         pulse_strength=options.pulse_strength or 0,
         pulse_period=options.pulse_period or .6,
+        blink_period=nil,blink_alpha=1,
         full_flash_enabled=options.full_flash_enabled or false,
         pulse_style=nil, flash_on=false,
     }, methods)
@@ -121,6 +122,9 @@ end
 function methods:set_transition(opacity,whitening)
     self:restore_transition()
     opacity=math.max(0,math.min(1,tonumber(opacity) or 1))
+    -- A completed TP tier blinks its entire native gauge to true 0 alpha.
+    -- Multiply by the regular summon-entry/exit fade; never mix colors.
+    opacity=opacity*(self.blink_alpha or 1)
     whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
     if opacity==1 and whitening==0 then
         for _,part in ipairs(self.release_mask) do part:visible(false) end
@@ -281,31 +285,17 @@ function methods:layout_fill()
             p:alpha(self.active_trail_alpha)
         end
     end
-    -- TP has two independent effects: a completed underlay pulses beneath
-    -- the semitransparent gain fill, and full 3000 TP alternates a single
-    -- neutral silhouette against the darkest blue. HP never enters this path.
-    self.flash_on=false
-    if self.pulse_active and self.pulse_style then
-        local style=self.pulse_style
-        local period=math.max(.05,style.period or .8)
-        if style.mode=='fullflash' then
-            self.flash_on=(self.clock()%period)>=period/2
-        elseif not (self.feedback and self.feedback.healing) then
-            local phase=(1-math.cos(2*math.pi*self.clock()/period))/2
-            local glow=health_motion.mix(style.from or self.color,
-                style.to or {red=220,green=244,blue=255},phase)
-            for _,part in ipairs(self.fill) do
-                part:color(glow.red,glow.green,glow.blue)
-            end
-        end
+    -- No color oscillation or sine-wave pulse. During a completed TP tier,
+    -- the bar is fully drawn for the first half of the cycle and entirely
+    -- transparent for the second half. Charging bars (and HP) stay steady.
+    self.blink_alpha=1
+    if self.blink_period and self.blink_period>0 then
+        local phase=(self.clock()%self.blink_period)/self.blink_period
+        self.blink_alpha=phase<.5 and 1 or 0
     end
+    self.flash_on=false
     if self.flash_fill then
-        local target=(self.pulse_style and self.pulse_style.target) or
-            {red=255,green=255,blue=255}
-        for _,part in ipairs(self.flash_fill) do
-            part:color(target.red,target.green,target.blue)
-            part:alpha(self.flash_on and (self.color.alpha or 255) or 0)
-        end
+        for _,part in ipairs(self.flash_fill) do part:alpha(0) end
     end
     self:layout_trail_glow()
     self:layout_heal_glow()
@@ -418,6 +408,13 @@ function methods:set_color(color)
         alpha=color.alpha or self.color.alpha or 255}
     self:layout_fill()
 end
+function methods:set_blink(period)
+    -- The requested value is one full visible+invisible cycle in seconds.
+    local v=tonumber(period)
+    self.blink_period=(v and v>0 and v<math.huge) and v or nil
+    if not self.blink_period then self.blink_alpha=1 end
+end
+
 function methods:set_pulse(active,style)
     self.pulse_active=active==true
     self.pulse_style=active and style or nil
