@@ -1,0 +1,17 @@
+package.path='./?.lua;'..package.path
+local preset=require('petAnimationPreset')
+local a=preset.defaults()
+assert(a.animation_duration==3 and a.text_duration==1.2)
+assert(a.trail_delay==2 and a.trail_duration==.5)
+assert(a.trail_color.alpha==255)
+assert(a.shake_style=='classic' and a.super_settle=='both')
+assert(a.ghost_lift_up==1 and a.ghost_lift_duration==.9)
+assert(a.ghost_drift_up==-2 and a.ghost_drift_right==1)
+assert(a.ghost_glow_height==33 and a.ghost_flare_height==60)
+assert(a.underbar_flare_height==45 and a.underbar_flare_width==30)
+assert(a.foreground_flash_alpha==0 and a.foreground_period==.1)
+assert(a.death_spark_style=='vivid')
+local b=preset.defaults()
+a.ghost_glow_color.red=0;a.trail_color.alpha=0
+assert(b.ghost_glow_color.red==240 and b.trail_color.alpha==255)
+print('PetBar animation preset: PASS')
