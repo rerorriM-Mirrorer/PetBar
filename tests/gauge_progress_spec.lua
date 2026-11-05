@@ -4,7 +4,10 @@ package.path='./?.lua;'..package.path
 windower={addon_path='PetBar/'}
 package.preload.images=function()
     return {new=function(opts)
-        local o={_x=0,_y=0,_width=1,_height=1,seen=false}
+        local c=opts.color or {}
+        local o={_x=0,_y=0,_width=1,_height=1,seen=false,
+            r=c.red or 255,g=c.green or 255,b=c.blue or 255,
+            a=c.alpha==nil and 255 or c.alpha}
         function o:pos(x,y)
             if x==nil then return self._x,self._y end
             self._x,self._y=x,y
@@ -19,8 +22,14 @@ package.preload.images=function()
             if v==nil then return self.seen end
             self.seen=v
         end
-        function o:color(r,g,b) self.r,self.g,self.b=r,g,b end
-        function o:alpha(a) self.a=a end
+        function o:color(r,g,b)
+            if r==nil then return self.r,self.g,self.b end
+            self.r,self.g,self.b=r,g,b
+        end
+        function o:alpha(a)
+            if a==nil then return self.a end
+            self.a=a
+        end
         function o:destroy() self.destroyed=true end
         return o
     end}
@@ -54,6 +63,17 @@ g:move(20,40)
 assert(g.trail_value==.3,'damage trail must also finish without more packets')
 assert(g.trough[3]._x+g.trough[3]._width==20+260,
     'right cap must end at requested width')
+g:set_transition(.5,1)
+assert(g.release_mask[1].seen and g.release_mask[2].seen and g.release_mask[3].seen)
+assert(g.release_mask[1].a==128,'white silhouette must preserve fade opacity')
+assert(g.release_mask[3]._x+g.release_mask[3]._width==20+260)
+local white_stroke=g.fill[1].r
+assert(white_stroke==255,'all visible fill pieces should be whitened')
+g:move(20,40)
+g:set_transition(1,0)
+assert(not g.release_mask[1].seen)
+assert(g.release_mask[1].a==128 or g.release_mask[1].a==0,
+    'inactive white mask must never render')
 g:destroy()
 
 clock=0
