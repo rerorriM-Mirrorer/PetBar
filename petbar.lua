@@ -15,14 +15,8 @@ local gauge=require('ffxiGauge')
 local anim=require('animationSettings')
 local layout_model=require('layoutModel')
 
-local avatar_names={}
-for _,name in ipairs({'Carbuncle','Ifrit','Shiva','Garuda','Titan',
-    'Ramuh','Leviathan','Fenrir','Diabolos','Cait Sith','Siren'}) do
-    avatar_names[name:lower()]=true
-end
-local function is_avatar(name)
-    return type(name)=='string' and avatar_names[name:lower()] or false
-end
+local summon_kinds=require('summonKinds')
+local is_avatar=summon_kinds.is_summon
 local defaults={
     visible=true,locked=false,layout='vertical',
     pos={x=-1,y=-1},width=260,hp_width=0,tp_width=0,
