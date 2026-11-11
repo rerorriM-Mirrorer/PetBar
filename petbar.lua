@@ -22,12 +22,15 @@ local life_guard_class=require('petLifeGuard')
 
 local summon_kinds=require('summonKinds')
 local is_avatar=summon_kinds.is_summon
+-- Keep immutable factory alpha values separate from config.load's result.
+local tp_alpha_defaults={under=255,over=238}
 local defaults={
     visible=true,locked=false,layout='vertical',
     pos={x=-1,y=-1},width=260,hp_width=0,tp_width=0,
     gap=6,scale=1,font_size=13,
     tp_flash_1000=.8,tp_flash_2000=.4,tp_flash_3000=.3,
-    tp_alpha_under=255,tp_alpha_over=238,
+    tp_alpha_under=tp_alpha_defaults.under,
+    tp_alpha_over=tp_alpha_defaults.over,
     offsets={hp={x=0,y=0},tp={x=0,y=0},
         name={x=0,y=0},tptext={x=0,y=0}},
     effects=pet_animation.defaults()
@@ -59,7 +62,7 @@ for _,side in ipairs({'under','over'}) do
     local key='tp_alpha_'..side
     local value=tonumber(settings[key])
     settings[key]=value and value==math.floor(value) and
-        value>=0 and value<=255 and value or defaults[key]
+        value>=0 and value<=255 and value or tp_alpha_defaults[side]
 end
 local function tp_alphas()
     return {settings.tp_alpha_under,settings.tp_alpha_over}
@@ -585,10 +588,10 @@ local function command(cmd,...)
                 msg('Use //pb tpalpha reset [under|over].',true);return
             end
             if not which or which=='under' then
-                settings.tp_alpha_under=defaults.tp_alpha_under
+                settings.tp_alpha_under=tp_alpha_defaults.under
             end
             if not which or which=='over' then
-                settings.tp_alpha_over=defaults.tp_alpha_over
+                settings.tp_alpha_over=tp_alpha_defaults.over
             end
             save();tp:set_fill_alphas(settings.tp_alpha_under,settings.tp_alpha_over)
             report()
