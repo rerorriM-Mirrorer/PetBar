@@ -110,4 +110,46 @@ blink:move(0,0)
 blink:set_transition(1,0)
 assert(blink.fill[1].a==255 and blink.trough[1].a==255)
 blink:destroy()
-print('PetBar gauge static capsule/background, fill-only blink and pet fade: PASS')
+-- Two independent TP fill alphas must be absolute, not relative to 238.
+-- The original cyan sprite starts at alpha 238; a value of 255 must
+-- actually bring it to 255 without changing its native trough art.
+clock=1
+local cyan=gauge.new(260,{red=128,green=199,blue=255,alpha=238},{clock=now})
+cyan:show()
+cyan:set_value(1,true)
+local shell_alpha=cyan.trough[1].a
+local back_alpha=cyan.trough[2].a
+assert(shell_alpha==238 and back_alpha==119,
+    'retain the original transparent overlay sprite and shell source')
+assert(cyan:set_fill_alpha(150))
+cyan:move(0,0)
+cyan:set_transition(1,0)
+assert(cyan.fill[1].a==150 and cyan.fill[2].a==150 and
+    cyan.fill[3].a==150,'cyan overlay should honor absolute 150/255 opacity')
+assert(cyan.trough[1].a==shell_alpha and cyan.trough[2].a==back_alpha)
+assert(cyan:set_fill_alpha(255))
+cyan:move(0,0)
+cyan:set_transition(1,0)
+assert(cyan.fill[1].a==255,'overlay alpha 255 must be fully opaque, not 238')
+assert(cyan:set_fill_alpha(0))
+cyan:move(0,0)
+cyan:set_transition(1,0)
+assert(cyan.fill[1].a==0 and cyan.trough[1].a==shell_alpha,
+    'foreground 0 alpha must not hide the capsule')
+assert(cyan:set_fill_alpha(180))
+cyan:set_blink(.4)
+clock=1.3
+cyan:move(0,0)
+cyan:set_transition(1,0)
+assert(cyan.fill[1].a==0 and cyan.trough[1].a==shell_alpha,
+    'custom alpha still flashes all the way to zero without blinking shell')
+clock=1.5
+cyan:move(0,0)
+cyan:set_transition(.5,0)
+assert(cyan.fill[1].a==90,'configured alpha must multiply whole-HUD fade')
+assert(cyan.trough[1].a==119 and cyan.trough[2].a==60,
+    'normal pet fade must still dim the capsule and background')
+assert(not cyan:set_fill_alpha(-1) and not cyan:set_fill_alpha(256) and
+    not cyan:set_fill_alpha(120.5),'reject invalid native alpha settings')
+cyan:destroy()
+print('PetBar fill alpha, static capsule, blink and pet fade: PASS')
