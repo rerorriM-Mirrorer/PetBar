@@ -142,12 +142,12 @@ assert(cyan.fill[1].a==0 and cyan.trough[1].a==shell_alpha,
     'foreground 0 alpha must not hide the capsule')
 assert(cyan:set_fill_alpha(180))
 cyan:set_blink(.4)
-clock=1.3
+clock=1.42
 cyan:move(0,0)
 cyan:set_transition(1,0)
 assert(cyan.fill[1].a==0 and cyan.trough[1].a==shell_alpha,
     'custom alpha still flashes all the way to zero without blinking shell')
-clock=1.5
+clock=1.65
 cyan:move(0,0)
 cyan:set_transition(.5,0)
 assert(cyan.fill[1].a==90,'configured alpha must multiply whole-HUD fade')
