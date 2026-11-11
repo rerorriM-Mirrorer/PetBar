@@ -3,7 +3,7 @@
 -- preserve EnemyBar2's native animation behavior and attribution.
 _addon.name='PetBar'
 _addon.author='A'
-_addon.version='0.4.0-test4'
+_addon.version='0.4.1-test4b'
 _addon.language='English'
 _addon.commands={'pb','petbar'}
 
