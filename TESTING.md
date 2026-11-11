@@ -1,5 +1,41 @@
 # PetBar TESTING.md
 
+## Current Development Status — TP Foreground-Only Blink Test 4b (2026-11-11, America/Chicago)
+
+- **Repository and branch:** `rerorriM-Mirrorer/PetBar` / `dev/tp-fill-only-blink-2026-11-11`; forked from Test 4 head `2c9e89723257dbc4395a33fdbf687eeecd87b219`. Runtime identifies as **PetBar v0.4.1-test4b**. The Test 4 branch and `main` remain unchanged.
+- **Latest user-confirmed live observation:** At 1,000–3,000 TP, the **entire capsule and recessed background** were flashing together with the blue bar in Test 4. This is *not* desired. Only the **completed foreground blue TP fill** should blink; the native capsule and background must stay continuously drawn and unchanged. The upper ~93%-opaque cyan TP overlay must also remain steady. Regular summon/departure fades must still affect the entire HUD.
+- **Cause verified directly from Test 4 source:** `ffxiGauge.lua`'s `set_transition()` multiplied the **global lifecycle opacity** by `blink_alpha` before iterating all image groups. This incorrectly dimmed `trough`, `trail`, and decorative effects along with `fill`.
+- **Fix:** In `ffxiGauge.lua`, leave lifecycle opacity unchanged for the capsule/trough/trail/effects; multiply `blink_alpha` **only for `fill` and `critical_fill` foreground image groups**. Keep the existing non-destructive image color/alpha snapshots, the pet fade multiplier, TP renderer, per-tier flash periods and 93%-opaque overlay unchanged. At 3,000 TP, the full-width foreground fill blinks; its capsule/background remain visible. This intentionally corrects the superseded Test 4 description below.
+- **Files changed in this batch:** `ffxiGauge.lua` (one scoped runtime correction); `tests/gauge_progress_spec.lua` (specific static/background/foreground and combined pet fade assertions); `petbar.lua` (version only); `README.md`, `TESTING.md`, and CI branch selector. Existing user settings are neither reset nor replaced.
+- **User appearance reference remains authoritative:** Cioara's saved `pos=(2212,2072)`, TP width `240`, TP offset `(+30,-6)`, name `(+6,-47)`, TP number `(+18,-21)`; familiar HP animation settings in uploaded XML. No change to any of those.
+- **Source verification:** Read current GitHub `AGENTS.md`, `WORKFLOW.md`, `TESTING.md` and current native/TP code before patching. Inspected the exact opacity multiplication site. Added mock assertions that all three fill pieces fade to alpha=0 during blink-off; both capsule caps remain alpha=255, recessed trough stays at its native alpha=128; when pet lifecycle opacity is .5 the capsule and trough respect that fade regardless of the blink state. **Regression test source has not yet been executed under Windower**; do not claim in-game validation.
+- **Testing gate:** Check Lua 5.1 syntax/CI where available, then confirm with actual FFXI preview. Do not promote to `main` on source review alone.
+
+### Test 4b live acceptance
+
+1. Back up the existing `Windower4/addons/PetBar/data` settings. Replace only the addon code with the branch ZIP, preserving settings. Ensure `README.md`, `WORKFLOW.md`, and `TESTING.md` are inside the `PetBar` folder. `//lua reload PetBar` and `//pb status` should report **0.4.1-test4b**, with the saved Cioara layout unchanged.
+2. Run `//pb preview tp 1000`, then `1450`, `2000`, `2600`, `3000`. At each flashing stage, verify the **gold capsule/end caps and recessed background never blink**, while only the blue filled portion alternates visible/invisible. During 1450/2600, the brighter cyan advancing fill stays visible over the changing underlay.
+3. Adjust `//pb tpflashperiod 1000 1` or `//pb tpflashperiod all 0.5` as desired; only the foreground blink period should change. The frame and background must never change alpha as a consequence.
+4. `//pb preview fade` should still fade the **whole** HUD and both text outlines. Test one actual summon/dismiss and HP damage/heal, especially where HP overlays TP, to confirm no unrelated behavior changed.
+5. Compare with original Test 4 if any discrepancy remains; send screenshot/video if the native art itself seems to pulse. Retain the current settings XML to avoid inadvertently replacing preferred layout values.
+
+### Test 4b patch register
+
+| Commit | Change |
+| --- | --- |
+| `6e84b5e` | Foreground-only blink: capsule, recessed background and effects keep lifecycle-only alpha |
+| `fb738a0` | Focused regression checks for independent capsule, background, fill and combined fading |
+| `81b7772` | Runtime version identifier 0.4.1-test4b |
+| `b0ea456` | README current branch, correction and cumulative changelog |
+| `eb8c6c4` | Enable CI for Test 4b branch |
+| Final documentation commit / remote branch SHA | Identify at delivery |
+
+### Previous Test 4 correction
+
+The November 5 Test 4 status below describes blinking the **whole gauge including the native trough**. That statement correctly records what was implemented in Test 4, but is **superseded** here: the user observed this behavior in game and requested only the foreground TP fill to blink. Keep the earlier testing record as historical context, not the intended current behavior.
+
+---
+
 ## Current Development Status — Shared Fade and TP Alpha Flash Test 4 (2026-11-05, America/Chicago)
 
 - **Repository/branch:** `rerorriM-Mirrorer/PetBar` / `dev/tp-alpha-flash-and-zorder-2026-11-05`. Base is Test 3 head `55e07709f98de28c0ef3e5f5a746bf283fb20145`. The earlier Test 3 branch and `main` are unchanged. Current version: `0.4.0-test4`.
