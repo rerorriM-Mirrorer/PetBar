@@ -87,6 +87,9 @@ local function pet_entity(p)
     if not eligible(p) then return nil end
     local index=p.mob and tonumber(p.mob.pet_index)
     local pet=windower.ffxi.get_mob_by_target('pet')
+    -- An explicit zero owner pet index means there is no active pet even if
+    -- the client retains an old 'pet' target for a short time.
+    if index and index<=0 then return nil end
     if index and index>0 then
         local owned=windower.ffxi.get_mob_by_index(index)
         if owned and is_avatar(owned.name) then return owned end
@@ -97,6 +100,7 @@ end
 local function reset(clear,retain_exit)
     s.pet,s.pet_id,s.pet_index,s.hpp,s.tp=nil,nil,nil,nil,nil
     s.last_packet_hp=-999
+    s.pending_spawn_id=nil
     life:clear()
     if not retain_exit then
         fade:clear()
@@ -491,6 +495,13 @@ local function status()
     msg('Avatar '..(s.pet or 'none')..' | HP '..tostring(s.hpp~=nil and s.hpp or '--')..
         '% | TP '..tostring(s.tp or '--')..
         ' | cutscene '..tostring(s.in_cs))
+    if settings.debug then
+        msg('Pet guard | confirmed alive '..tostring(life.alive)..
+            ' | zero pending '..tostring(life.zero_since~=nil)..
+            ' | missing pending '..tostring(life.missing_since~=nil)..
+            ' | awaiting first HP '..tostring(s.pending_spawn_id~=nil)..
+            ' | fading pet '..tostring(s.fading_id or 'none'))
+    end
     msg('TP alpha flash cycles: 1000='..settings.tp_flash_1000..
         's, 2000='..settings.tp_flash_2000..
         's, 3000='..settings.tp_flash_3000..
