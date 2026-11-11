@@ -105,7 +105,9 @@ function methods:set_transition(opacity,whitening)
     opacity=math.max(0,math.min(1,tonumber(opacity) or 1))
     whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
     local blink=self.blink_alpha or 1
-    if opacity==1 and whitening==0 and blink==1 and self.fill_alpha==nil then return end
+    local custom_alpha=self.fill_alpha~=nil and
+        self.fill_alpha~=(tonumber(self.color.alpha) or 255)
+    if opacity==1 and whitening==0 and blink==1 and not custom_alpha then return end
     local originals={}
     for _,name in ipairs(transition_groups) do
         -- The TP readiness blink belongs to the *foreground fill only*.
@@ -124,7 +126,7 @@ function methods:set_transition(opacity,whitening)
             local result=transition_colors.apply({
                 red=red,green=green,blue=blue,alpha=alpha
             },{alpha=group_opacity,whiten=whitening})
-            if (name=='fill' or name=='critical_fill') and self.fill_alpha~=nil then
+            if (name=='fill' or name=='critical_fill') and custom_alpha then
                 -- TP alpha is an absolute 0..255 value, not a percentage of
                 -- the overlay's old 238 alpha. Preserve animation-intrinsic
                 -- alpha as a ratio, then combine TP blink and pet fade.
