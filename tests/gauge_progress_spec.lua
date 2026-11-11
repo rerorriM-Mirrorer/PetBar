@@ -87,15 +87,27 @@ clock=.3
 blink:move(0,0)
 blink:set_transition(1,0)
 assert(blink.blink_alpha==0 and blink.fill[1].a==0)
-assert(blink.trough[1].a==0,'entire TP underlay must be transparent')
+assert(blink.fill[2].a==0 and blink.fill[3].a==0,
+    'all three foreground fill pieces blink together')
+assert(blink.trough[1].a==255 and blink.trough[3].a==255,
+    'both capsule end caps must remain visible while the fill flashes off')
+assert(blink.trough[2].a==128,
+    'recessed background retains its native transparency during TP blink')
 clock=.5
 blink:move(0,0)
 blink:set_transition(.5,0)
-assert(blink.fill[1].a==128,'blink must multiply regular lifecycle fade')
-assert(blink.trough[1].a==128)
+assert(blink.fill[1].a==128,'foreground blink on multiplies regular pet fade')
+assert(blink.trough[1].a==128,'capsule uses pet fade, not TP blink')
+assert(blink.trough[2].a==64,'background uses pet fade, not TP blink')
+clock=.7
+blink:move(0,0)
+blink:set_transition(.5,0)
+assert(blink.fill[1].a==0,'foreground blink off during pet fade')
+assert(blink.trough[1].a==128 and blink.trough[2].a==64,
+    'capsule/background remain visible even when TP blinks during pet fade')
 blink:set_blink(nil)
 blink:move(0,0)
 blink:set_transition(1,0)
 assert(blink.fill[1].a==255 and blink.trough[1].a==255)
 blink:destroy()
-print('PetBar gauge native cap, regular fade and alpha blink: PASS')
+print('PetBar gauge static capsule/background, fill-only blink and pet fade: PASS')
