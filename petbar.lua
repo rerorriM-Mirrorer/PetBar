@@ -3,7 +3,7 @@
 -- preserve EnemyBar2's native animation behavior and attribution.
 _addon.name='PetBar'
 _addon.author='A'
-_addon.version='0.4.1-test4b'
+_addon.version='0.4.2-test4c'
 _addon.language='English'
 _addon.commands={'pb','petbar'}
 
@@ -18,6 +18,7 @@ local tp_renderer=require('tpRenderer')
 local pet_animation=require('petAnimationPreset')
 local transitions=require('petTransitions')
 local transition_colors=require('transitionColors')
+local life_guard_class=require('petLifeGuard')
 
 local summon_kinds=require('summonKinds')
 local is_avatar=summon_kinds.is_summon
@@ -55,13 +56,14 @@ local function tp_periods()
     return {settings.tp_flash_1000,settings.tp_flash_2000,settings.tp_flash_3000}
 end
 local s={pet=nil,pet_id=nil,pet_index=nil,hpp=nil,tp=nil,
-    last_packet_hp=-999,death_at=nil,last_scan=-999,preview=nil,
+    last_packet_hp=-999,last_scan=-999,preview=nil,
     in_cs=false,stopping=false,drag=nil,ctrl={},ctrl_down=false,
     ui_w=nil,ui_h=nil}
 local hp,tp,caption,tp_label
 local x,y,width,tp_width,total_w,total_h=0,0,260,260,260,50
 local visible=false
 local fade=transitions.new()
+local life=life_guard_class.new()
 local label_palette={red=245,green=238,blue=242,alpha=255}
 local tp_palette={red=177,green=211,blue=255,alpha=255}
 local stroke_palette={red=12,green=12,blue=12,alpha=180}
@@ -93,8 +95,9 @@ local function pet_entity(p)
     return pet and is_avatar(pet.name) and pet or nil
 end
 local function reset(clear,retain_exit)
-    s.pet,s.pet_id,s.pet_index,s.hpp,s.tp,s.death_at=nil,nil,nil,nil,nil,nil
+    s.pet,s.pet_id,s.pet_index,s.hpp,s.tp=nil,nil,nil,nil,nil
     s.last_packet_hp=-999
+    life:clear()
     if not retain_exit then
         fade:clear()
         s.departure=nil
@@ -203,53 +206,85 @@ local function show(yes)
         hp:show();tp:show();caption:show();tp_label:show()
     else hide() end
 end
+-- Treat a new summon as live only after a positive HP observation. Both
+-- the entity table and pet packets can briefly advertise 0% during spawning.
+local function adopt_pet(pet,initial_hp,now)
+    reset(true,true)
+    s.pet,s.pet_index,s.pet_id=pet.name,pet.index,pet.id
+    s.departure=nil
+    s.fading_id=nil
+    s.pending_spawn_id=nil
+    s.hpp=clamp(initial_hp,1,100)
+    life:track(pet.id)
+    life:health(s.hpp,now)
+    hp:set_value(s.hpp/100,true)
+    tp:set_value(nil,true)
+    fade:appear(pet.id,now)
+    if settings.debug then msg('Summon acquired: '..pet.name..' ('..s.hpp..'% HP)') end
+end
+
 local function scan(now)
     local info=windower.ffxi.get_info()
     local player=info and info.logged_in and windower.ffxi.get_player()
     local observed=player and pet_entity(player)
-    -- After a confirmed death the entity can linger briefly at 0 HP.
-    -- Don't repeatedly fade it back in until it truly disappears.
+    local observed_hp=observed and tonumber(observed.hpp)
+    -- A dead entity may linger in the mob list, but a positive HP reading
+    -- proves that a living/reused entity must not stay permanently blacklisted.
     if not observed then
         s.fading_id=nil
     elseif s.fading_id==observed.id then
-        observed=nil
+        if observed_hp and observed_hp>0 then
+            s.fading_id=nil
+        else
+            observed=nil
+        end
     end
     if observed and observed.index and observed.id then
-        if observed.id~=s.pet_id or observed.index~=s.pet_index then
-            reset(true,true)
-            s.pet,s.pet_index,s.pet_id=observed.name,observed.index,observed.id
-            s.departure=nil
-            s.fading_id=nil
-            s.hpp=clamp(tonumber(observed.hpp) or 100,0,100)
-            hp:set_value(s.hpp/100,true)
-            tp:set_value(nil,true)
-            fade:appear(observed.id,now)
-            if settings.debug then msg('Summon acquired: '..observed.name) end
+        local is_current=observed.id==s.pet_id and observed.index==s.pet_index
+        if not is_current then
+            if not observed_hp or observed_hp<=0 then
+                -- Uninitialized 0% HP is NOT a fresh death or a hit on the HP bar.
+                if settings.debug and s.pending_spawn_id~=observed.id then
+                    msg('Awaiting positive HP for '..observed.name..' before showing PetBar')
+                    s.pending_spawn_id=observed.id
+                end
+                if s.pet_index and life:missing(now) then
+                    depart('missing',now)
+                end
+                return
+            end
+            adopt_pet(observed,observed_hp,now)
         else
-            if now-s.last_packet_hp>.30 and type(observed.hpp)=='number' then
-                local current=clamp(observed.hpp,0,100)
-                if current~=s.hpp then
-                    s.hpp=current
-                    hp:set_value(current/100,false)
+            life:present()
+            -- Do not let slightly stale entity HP overwrite a recent packet.
+            if now-s.last_packet_hp>.30 and type(observed_hp)=='number' then
+                local verdict=life:health(observed_hp,now)
+                if verdict=='alive' and observed_hp~=s.hpp then
+                    s.hpp=clamp(observed_hp,1,100)
+                    hp:set_value(s.hpp/100,false)
+                elseif verdict=='dead' then
+                    -- Only a sustained zero on an established living summon
+                    -- can cause a real 0-HP ghost/death fade.
+                    s.hpp=0
+                    hp:set_value(0,false)
+                    if settings.debug then msg('Summon HP stayed at zero; fading departure') end
+                    depart('death',now)
+                    return
                 end
             end
         end
         if fade:sample(now).identity~=observed.id and not s.preview then
-            -- A demonstration may have replaced the visible gauge values.
-            -- Restore the real pet data when its own fade resumes.
+            -- Restore real HP/TP after a demonstration; never leave preview TP.
             hp:set_value((s.hpp or 100)/100,true)
             tp:set_value(s.tp,true)
             s.departure=nil
             fade:appear(observed.id,now)
         end
-        if s.hpp==0 then
-            -- An observed death fades out like any other disappearance.
-            depart('death',now)
-        end
-    elseif s.pet_index then
-        local reason=s.hpp==0 and 'death' or 'missing'
-        if settings.debug then msg('Summon left: '..reason) end
-        depart(reason,now)
+    elseif s.pet_index and life:missing(now) then
+        -- Brief missing pet-target/index readings during summoning must not
+        -- cancel a still-present summon. Exit only after a stable absence.
+        if settings.debug then msg('Summon absent long enough; fading normal departure') end
+        depart('missing',now)
     end
 end
 local function on_pet_packet(id,data)
@@ -265,28 +300,35 @@ local function on_pet_packet(id,data)
     if owner~=tonumber(player.index) or not index or index<=0 then return end
     local pet=pet_entity(player)
     if not pet or index~=pet.index then return end
-    if s.pet_index and s.pet_index~=index then return end
+    if s.pet_index and (s.pet_index~=index or s.pet_id~=pet.id) then return end
+    local now=os.clock()
+    local packet_hp=tonumber(p['Current HP%'])
+    local entity_hp=tonumber(pet.hpp)
+    local initial_hp=(packet_hp and packet_hp>0 and packet_hp<=100 and packet_hp)
+        or (entity_hp and entity_hp>0 and entity_hp<=100 and entity_hp)
     if not s.pet_index then
-        if s.fading_id==pet.id then return end
-        s.pet,s.pet_index,s.pet_id=pet.name,pet.index,pet.id
-        s.hpp=clamp(tonumber(pet.hpp) or 100,0,100)
-        hp:set_value(s.hpp/100,true)
-        tp:set_value(nil,true)
-        s.departure=nil
-        fade:appear(pet.id,os.clock())
+        if not initial_hp then return end
+        -- A healthy entity/packet is allowed to recover from provisional
+        -- fade quarantine; a packet reporting 0 alone is not enough.
+        adopt_pet(pet,initial_hp,now)
     end
-    local h=tonumber(p['Current HP%'])
-    if h and h>=0 and h<=100 and h~=s.hpp then
-        s.hpp=h
-        s.last_packet_hp=os.clock()
-        hp:set_value(h/100,false)
-        s.death_at=h==0 and os.clock() or nil
+    life:present()
+    if packet_hp and packet_hp>=0 and packet_hp<=100 then
+        local verdict=life:health(packet_hp,now)
+        if verdict=='alive' then
+            s.last_packet_hp=now
+            if packet_hp~=s.hpp then
+                s.hpp=packet_hp
+                hp:set_value(packet_hp/100,false)
+            end
+        end
+        -- Ignore provisional 0% packet values. They must not trigger an
+        -- immediate ghost hit; a sustained zero will be verified in scan().
     end
     local value=tonumber(p['Pet TP'])
     if value and value>=0 and value<=3000 and value~=s.tp then
         local prev=s.tp
         s.tp=value
-        -- No shaking on TP spent; blue recovery animation on TP gain.
         tp:set_value(value,prev==nil or value<prev)
     end
 end
