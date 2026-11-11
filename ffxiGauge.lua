@@ -105,40 +105,39 @@ function methods:set_transition(opacity,whitening)
     opacity=math.max(0,math.min(1,tonumber(opacity) or 1))
     whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
     local blink=self.blink_alpha or 1
-    local custom_alpha=self.fill_alpha~=nil and
-        self.fill_alpha~=(tonumber(self.color.alpha) or 255)
+    local palette_alpha=math.max(1,tonumber(self.color.alpha) or 255)
+    local custom_alpha=self.fill_alpha~=nil and self.fill_alpha~=palette_alpha
     if opacity==1 and whitening==0 and blink==1 and not custom_alpha then return end
+
     local originals={}
     for _,name in ipairs(transition_groups) do
-        -- Only foreground parts need per-frame edits for a TP alpha/blink.
-        -- The pet entrance/exit fade, unlike the TP effects, fades everything.
+        -- A TP alpha/blink changes foreground pieces only; the whole-pet
+        -- entrance/exit fade still multiplies every visible image.
         local foreground=(name=='fill' or name=='critical_fill')
         local needs_update=opacity~=1 or whitening~=0 or
             (foreground and (blink~=1 or custom_alpha))
         if needs_update then
-        local group_opacity=foreground and opacity*blink or opacity
-        for _,part in ipairs(self[name] or {}) do
-            local red,green,blue=part:color()
-            local alpha=part:alpha()
-            originals[#originals+1]={
-                part=part,red=red,green=green,blue=blue,alpha=alpha
-            }
-            local result=transition_colors.apply({
-                red=red,green=green,blue=blue,alpha=alpha
-            },{alpha=group_opacity,whiten=whitening})
-            if (name=='fill' or name=='critical_fill') and custom_alpha then
-                -- TP alpha is an absolute 0..255 value, not a percentage of
-                -- the overlay's old 238 alpha. Preserve animation-intrinsic
-                -- alpha as a ratio, then combine TP blink and pet fade.
-                -- The shell/trough/trails are deliberately not affected.
-                local source_alpha=math.max(1,tonumber(self.color.alpha) or 255)
-                local effective=(tonumber(alpha) or 255)*self.fill_alpha/
-                    source_alpha*group_opacity
-                result.alpha=math.floor(math.max(0,math.min(255,effective))+.5)
+            local group_opacity=foreground and opacity*blink or opacity
+            for _,part in ipairs(self[name] or {}) do
+                local red,green,blue=part:color()
+                local alpha=part:alpha()
+                originals[#originals+1]={
+                    part=part,red=red,green=green,blue=blue,alpha=alpha
+                }
+                local result=transition_colors.apply({
+                    red=red,green=green,blue=blue,alpha=alpha
+                },{alpha=group_opacity,whiten=whitening})
+                if foreground and custom_alpha then
+                    -- Absolute 0..255 opacity even for cyan's original 238.
+                    -- Preserve animation-intrinsic alpha before applying the
+                    -- selected TP alpha, on/off blink and pet-wide fade.
+                    local effective=(tonumber(alpha) or 255)*self.fill_alpha/
+                        palette_alpha*group_opacity
+                    result.alpha=math.floor(math.max(0,math.min(255,effective))+.5)
+                end
+                part:color(result.red,result.green,result.blue)
+                part:alpha(result.alpha)
             end
-            part:color(result.red,result.green,result.blue)
-            part:alpha(result.alpha)
-        end
         end
     end
     self.transition_original=originals
