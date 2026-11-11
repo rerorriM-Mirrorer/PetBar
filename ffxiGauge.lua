@@ -105,7 +105,7 @@ function methods:set_transition(opacity,whitening)
     opacity=math.max(0,math.min(1,tonumber(opacity) or 1))
     whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
     local blink=self.blink_alpha or 1
-    if opacity==1 and whitening==0 and blink==1 then return end
+    if opacity==1 and whitening==0 and blink==1 and self.fill_alpha==nil then return end
     local originals={}
     for _,name in ipairs(transition_groups) do
         -- The TP readiness blink belongs to the *foreground fill only*.
@@ -124,6 +124,16 @@ function methods:set_transition(opacity,whitening)
             local result=transition_colors.apply({
                 red=red,green=green,blue=blue,alpha=alpha
             },{alpha=group_opacity,whiten=whitening})
+            if (name=='fill' or name=='critical_fill') and self.fill_alpha~=nil then
+                -- TP alpha is an absolute 0..255 value, not a percentage of
+                -- the overlay's old 238 alpha. Preserve animation-intrinsic
+                -- alpha as a ratio, then combine TP blink and pet fade.
+                -- The shell/trough/trails are deliberately not affected.
+                local source_alpha=math.max(1,tonumber(self.color.alpha) or 255)
+                local effective=(tonumber(alpha) or 255)*self.fill_alpha/
+                    source_alpha*group_opacity
+                result.alpha=math.floor(math.max(0,math.min(255,effective))+.5)
+            end
             part:color(result.red,result.green,result.blue)
             part:alpha(result.alpha)
         end
@@ -367,6 +377,15 @@ function methods:set_color(color)
         alpha=color.alpha or self.color.alpha or 255}
     self:layout_fill()
 end
+function methods:set_fill_alpha(value)
+    -- Absolute foreground brightness/opacity control, independent of the
+    -- native capsule or recessed trough. Applied to all fill sprite pieces.
+    local n=tonumber(value)
+    if not n or n~=math.floor(n) or n<0 or n>255 then return false end
+    self.fill_alpha=n
+    return true
+end
+
 function methods:set_blink(period)
     -- The requested value is one full visible+invisible cycle in seconds.
     local v=tonumber(period)
