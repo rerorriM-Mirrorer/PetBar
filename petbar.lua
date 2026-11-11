@@ -3,7 +3,7 @@
 -- preserve EnemyBar2's native animation behavior and attribution.
 _addon.name='PetBar'
 _addon.author='A'
-_addon.version='0.4.2-test4c'
+_addon.version='0.4.3-test4d'
 _addon.language='English'
 _addon.commands={'pb','petbar'}
 
@@ -27,6 +27,7 @@ local defaults={
     pos={x=-1,y=-1},width=260,hp_width=0,tp_width=0,
     gap=6,scale=1,font_size=13,
     tp_flash_1000=.8,tp_flash_2000=.4,tp_flash_3000=.3,
+    tp_alpha_under=255,tp_alpha_over=238,
     offsets={hp={x=0,y=0},tp={x=0,y=0},
         name={x=0,y=0},tptext={x=0,y=0}},
     effects=pet_animation.defaults()
@@ -51,6 +52,17 @@ for _,level in ipairs({'1000','2000','3000'}) do
     local n=tonumber(settings[key])
     local original=defaults[key]
     settings[key]=n and n==n and n>=.1 and n<=5 and n or original
+end
+-- These are native 0..255 fill alphas, not percentages of the existing alpha.
+-- Keep saved per-character values; reject invalid XML values without reset.
+for _,side in ipairs({'under','over'}) do
+    local key='tp_alpha_'..side
+    local value=tonumber(settings[key])
+    settings[key]=value and value==math.floor(value) and
+        value>=0 and value<=255 and value or defaults[key]
+end
+local function tp_alphas()
+    return {settings.tp_alpha_under,settings.tp_alpha_over}
 end
 local function tp_periods()
     return {settings.tp_flash_1000,settings.tp_flash_2000,settings.tp_flash_3000}
@@ -190,7 +202,7 @@ local function rebuild()
     width,tp_width=g.hp_width,g.tp_width
     -- Windower image objects stack by creation order. Create TP first so
     -- HP and its native end caps always draw above the overlapping TP gauge.
-    tp=tp_renderer.new(tp_width,options,nil,tp_periods())
+    tp=tp_renderer.new(tp_width,options,nil,tp_periods(),tp_alphas())
     hp=gauge.new(width,{red=243,green=157,blue=184,alpha=255},options(false))
     caption=make_text(label_palette.red,label_palette.green,label_palette.blue,true)
     tp_label=make_text(tp_palette.red,tp_palette.green,tp_palette.blue,false)
@@ -467,6 +479,8 @@ local function help()
     line('preview tp [0..3000]','Inspect full-width 1000/2000/3000 TP passes')
     line('tpflashperiod [1000|2000|3000|all] [seconds]',
         'Get/set full visible+transparent cycle (0.1..5 seconds)')
+    line('tpalpha [under|over] [0..255]','Independent blue underbar / cyan overlay opacity')
+    line('tpalpha reset [under|over]','Restore original under=255, over=238')
     windower.add_to_chat(0,('APPEARANCE & POSITION'):color(167))
     line('layout <vertical|horizontal>','Equal-width HP/TP; vertical default')
     line('width <60..800>','Set both gauges; reset individual overrides')
@@ -502,6 +516,8 @@ local function status()
             ' | awaiting first HP '..tostring(s.pending_spawn_id~=nil)..
             ' | fading pet '..tostring(s.fading_id or 'none'))
     end
+    msg('TP fills: under '..settings.tp_alpha_under..
+        '/255 | over '..settings.tp_alpha_over..'/255')
     msg('TP alpha flash cycles: 1000='..settings.tp_flash_1000..
         's, 2000='..settings.tp_flash_2000..
         's, 3000='..settings.tp_flash_3000..
@@ -550,6 +566,45 @@ local function command(cmd,...)
         -- Convenience command; normal /pet Release has identical fade behavior.
         windower.send_command('input /pet "Release" <me>')
         msg('Release requested; waiting for pet departure')
+        return
+    end
+    if cmd=='tpalpha' then
+        local side=a[1] and a[1]:lower()
+        local function report(which)
+            if which then
+                msg('TP '..which..' fill alpha '..settings['tp_alpha_'..which]..'/255')
+            else
+                msg('TP fills: under '..settings.tp_alpha_under..
+                    '/255 | over '..settings.tp_alpha_over..'/255')
+            end
+        end
+        if not side then report();return end
+        if side=='reset' then
+            local which=a[2] and a[2]:lower()
+            if which and which~='under' and which~='over' then
+                msg('Use //pb tpalpha reset [under|over].',true);return
+            end
+            if not which or which=='under' then
+                settings.tp_alpha_under=defaults.tp_alpha_under
+            end
+            if not which or which=='over' then
+                settings.tp_alpha_over=defaults.tp_alpha_over
+            end
+            save();tp:set_fill_alphas(settings.tp_alpha_under,settings.tp_alpha_over)
+            report()
+            return
+        end
+        if side~='under' and side~='over' then
+            msg('Use //pb tpalpha [under|over] [0..255].',true);return
+        end
+        if a[2]==nil then report(side);return end
+        local alpha=tonumber(a[2])
+        if not alpha or alpha~=math.floor(alpha) or alpha<0 or alpha>255 then
+            msg('Fill alpha must be a whole number from 0 to 255.',true);return
+        end
+        settings['tp_alpha_'..side]=alpha
+        save();tp:set_fill_alphas(settings.tp_alpha_under,settings.tp_alpha_over)
+        report(side)
         return
     end
     if cmd=='tpflashperiod' or cmd=='tpperiod' then
