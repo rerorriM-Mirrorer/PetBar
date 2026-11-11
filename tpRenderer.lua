@@ -23,12 +23,17 @@ local function valid_periods(values)
     end
     return out
 end
-function renderer.new(width,options_factory,clock,periods)
+local function valid_alpha(value,default)
+    local n=tonumber(value)
+    return n and n==math.floor(n) and n>=0 and n<=255 and n or default
+end
+function renderer.new(width,options_factory,clock,periods,alphas)
     local self=setmetatable({
         bars={},x=0,y=0,width=width,visible=false,
         value=nil,info=tiers.sample(nil),
         clock=clock or os.clock,number_from=0,number_started=nil,
         periods=valid_periods(periods),
+        under_alpha=255,over_alpha=238,
         palette_stage=nil,
     },methods)
     local base_options=options_factory(true)
@@ -37,6 +42,7 @@ function renderer.new(width,options_factory,clock,periods)
     self.bars[1]=gauge.new(width,palette.first,base_options)
     self.bars[2]=gauge.new(width,palette.overlay_blue,overlay_options)
     for _,bar in ipairs(self.bars) do bar:set_value(0,true) end
+    self:set_fill_alphas(alphas and alphas[1],alphas and alphas[2])
     return self
 end
 function methods:sync()
@@ -93,6 +99,16 @@ function methods:set_value(value,immediate)
     self.bars[2]:set_value(info.overlay_fill,snap or stage_changed)
     self:sync()
 end
+function methods:set_fill_alphas(under,over)
+    self.under_alpha=valid_alpha(under,255)
+    self.over_alpha=valid_alpha(over,238)
+    self.bars[1]:set_fill_alpha(self.under_alpha)
+    self.bars[2]:set_fill_alpha(self.over_alpha)
+end
+function methods:get_fill_alphas()
+    return self.under_alpha,self.over_alpha
+end
+
 function methods:set_flash_periods(values)
     self.periods=valid_periods(values)
     self:sync()
