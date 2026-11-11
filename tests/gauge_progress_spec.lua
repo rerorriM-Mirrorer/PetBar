@@ -131,6 +131,11 @@ cyan:set_transition(1,0)
 assert(cyan.fill[1].a==150 and cyan.fill[2].a==150 and
     cyan.fill[3].a==150,'cyan overlay should honor absolute 150/255 opacity')
 assert(cyan.trough[1].a==shell_alpha and cyan.trough[2].a==back_alpha)
+for _,saved in ipairs(cyan.transition_original or {}) do
+    for _,piece in ipairs(cyan.trough) do
+        assert(saved.part~=piece,'TP alpha should never update/snapshot the capsule')
+    end
+end
 assert(cyan:set_fill_alpha(255))
 cyan:move(0,0)
 cyan:set_transition(1,0)
