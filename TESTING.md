@@ -1,5 +1,47 @@
 # PetBar TESTING.md
 
+## Current Development Status — Summon Lifecycle Guard Test 4c (2026-11-11, America/Chicago)
+
+- **Repository/working branch:** `rerorriM-Mirrorer/PetBar` / `dev/summon-lifecycle-guard-2026-11-11`. Based on the Test 4b head `647e34fee4d5f1cce09536f666e00343622e19c2`. Runtime version `0.4.2-test4c`. The Test 4b and `main` branches remain unchanged; Test 4b is the user-confirmed good **TP foreground-only flash** baseline.
+- **New user-observed in-game problem:** Sometimes after summoning Carbuncle, PetBar behaves as if Carbuncle died: a ghost-hit/flickering HP appearance occurs, then PetBar disappears, although Carbuncle remains summoned. This report is **live observation of Test 4b**, not a packet capture. Do not claim proof of an FFXI 0%-HP packet without logs.
+- **Source-confirmed failure path (Test 4b):** `scan()` could adopt a new named pet entity even when `pet.hpp==0`, immediately play a death transition, set `s.fading_id`, and suppress the same pet ID from future scans and packets; `on_pet_packet()` could also send a single provisional `Current HP%=0` straight into `hp:set_value(0,false)`, potentially causing a false fatal ghost-hit. One missing pet lookup was sufficient to fade away the active HUD. A stale `pet` target could also be used when the owner's pet index was explicitly 0.
+- **Test 4c mitigation:** New pure `petLifeGuard.lua` tracks confirmed positive HP for one owned summon; don't display or kill new uninitialized 0%-HP entities; defer an established living pet's zero HP for **0.35s** and missing entity for **0.40s** before a normal departure; ignore provisional zero HP packets without triggering HP ghost effects; clear any previous fading-ID quarantine when the pet entity is again observed with positive HP. Explicit owner `pet_index=0` rejects stale pet targets. Repeated scans and packets remain owner and index checked.
+- **Other behavior:** Existing TP flash, two-layer cyan overlay, static gold capsule/background, HP-over-TP order, normal entrance/exit fades, text strokes, pet lists, and saved Cioara layout/animation settings are unchanged. Only the summon life cycle, debug status, version, documentation, and focused tests were touched.
+- **Diagnostic additions:** `//pb debug on` and `//pb status` now report confirmation, pending zero HP, pending disappearance, initial HP wait, and faded-ID quarantine. Debug messages announce pending acquisition and confirmed departure without repeating every scan.
+- **Verification:** Inspected fresh GitHub `AGENTS.md`, `WORKFLOW.md`, `TESTING.md`, source, and packet notes. Added `tests/pet_life_guard_spec.lua` with deterministic initial zero, healthy recovery, sustained death, missing entity, reuse of ID, and replacement isolation. **Ran this isolated pure guard source and test under local `texlua` (Lua 5.3): PASS.** Updated mocked `tests/fade_entry_spec.lua` to exercise the 0%-HP summon race, isolated owner-checked zero packet, brief missing entity, confirmed normal disappearance, actual persistent death, and resurrection with the same ID; **that full entrypoint test has not been executed in a Windower-compatible runtime here**. No successful GitHub Lua 5.1 CI or actual in-game Test 4c acceptance has yet been confirmed.
+- **Caution:** A real 0%-HP event now takes approximately 0.35s to confirm before the normal fade; a release/disappearance requires approximately 0.40s of consistent absence before fading. These are short confidence buffers, not exact packet-based confirmation. If FFXI reports a pet persistently at 0% while actually alive, further packet/entity observation is needed; it should now wait rather than display a false death and stay quarantined.
+- **Longer-term requests remain deferred:** Avatar art behind HP, Rage/Ward timers, XIVParty port and optional TP sound remain separate and untouched.
+
+### Test 4c live checklist
+
+1. Back up existing `Windower4/addons/PetBar/data` (especially Cioara's XML) and Test 4b addon folder. Extract the Test 4c development ZIP, rename its root to `PetBar`, and place in `Windower4/addons/PetBar/` with `WORKFLOW.md` and `TESTING.md`. Reload with `//lua reload PetBar`; `//pb status` reports `v0.4.2-test4c`.
+2. With `//pb debug on`, repeatedly summon **Carbuncle** (at least five attempts), including immediately after dismissing/releasing it. Confirm bar fades in, stays present while Carbuncle lives, and no 0%-HP fatal ghost-hit or permanent disappearance occurs. An occasional initial `Awaiting positive HP` message is acceptable if the entity data isn't yet settled.
+3. While Carbuncle is summoned, use `//pb status` to see confirmed-alive state. If the bar disappears, note whether `zero pending`, `missing pending`, or `fading pet` is reported, and capture the debug chat and any Lua errors. Record pet index and HP packet context when available.
+4. Try an elemental spirit, switching summons and quickly releasing/resummoning. Confirm no stale pet ID or prior death state prevents the new HUD from appearing.
+5. Confirm a **real pet death** still triggers the normal-color fade after sustained zero HP, and a Release after continuous disappearance fades normally. No permanent ghost artifacts.
+6. Recheck the known-good Test 4b appearance: `//pb preview tp 1450` and `3000` blink **only the blue fill**, never the gold capsule/background; cyan overlays and HP bar stacking remain intact. Verify position, TP width, and personal effect settings were not reset; nothing new should require changing XML.
+7. For deeper evidence if the problem persists, record raw `0x067/0x068` packet fields plus pet entity `id/index/hpp` and player's `pet_index`; see the new entry in `docs/PACKETS.md`.
+
+### Test 4c patch register
+
+| Commit | Change |
+| --- | --- |
+| `ce0055c` | Pure pet lifetime guard and default short confirmation windows |
+| `539ee50` | Integrate healthy-first acquisition, delayed zero/missing decisions, and same-ID recovery |
+| `4823b45` | Deterministic guard regression cases |
+| `b20a896`, `de35612` | Mocked Windower entrypoint scenarios and reliable simulated scan intervals |
+| `29074bb` | Reject empty owner pet index and expose guard state in debug status |
+| `740ae42` | README status and user guidance |
+| `fd5cc2c` | Preserve packet investigation hypothesis and required capture evidence |
+| `075382d` | Lua 5.1 CI branch targeting |
+| Final testing documentation SHA and published remote head | Report separately at delivery |
+
+### Relationship to prior testing
+
+Test 4b's **foreground-only TP flashing is visually confirmed by the user** (`Looks much better`), while the new intermittent spawn/death issue is also confirmed as a user observation. All earlier entries below are retained as historical state, including unverified changes. Test 4c is a new, separate lifecycle fix **not yet user-tested**.
+
+---
+
 ## Current Development Status — TP Foreground-Only Blink Test 4b (2026-11-11, America/Chicago)
 
 - **Repository and branch:** `rerorriM-Mirrorer/PetBar` / `dev/tp-fill-only-blink-2026-11-11`; forked from Test 4 head `2c9e89723257dbc4395a33fdbf687eeecd87b219`. Runtime identifies as **PetBar v0.4.1-test4b**. The Test 4 branch and `main` remain unchanged.
