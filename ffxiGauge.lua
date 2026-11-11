@@ -110,13 +110,13 @@ function methods:set_transition(opacity,whitening)
     if opacity==1 and whitening==0 and blink==1 and not custom_alpha then return end
     local originals={}
     for _,name in ipairs(transition_groups) do
-        -- The TP readiness blink belongs to the *foreground fill only*.
-        -- Keep the capsule, recessed background, trail, and decorative effects
-        -- at their normal opacity; the pet enter/exit fade still affects all.
-        local group_opacity=opacity
-        if name=='fill' or name=='critical_fill' then
-            group_opacity=opacity*blink
-        end
+        -- Only foreground parts need per-frame edits for a TP alpha/blink.
+        -- The pet entrance/exit fade, unlike the TP effects, fades everything.
+        local foreground=(name=='fill' or name=='critical_fill')
+        local needs_update=opacity~=1 or whitening~=0 or
+            (foreground and (blink~=1 or custom_alpha))
+        if needs_update then
+        local group_opacity=foreground and opacity*blink or opacity
         for _,part in ipairs(self[name] or {}) do
             local red,green,blue=part:color()
             local alpha=part:alpha()
@@ -138,6 +138,7 @@ function methods:set_transition(opacity,whitening)
             end
             part:color(result.red,result.green,result.blue)
             part:alpha(result.alpha)
+        end
         end
     end
     self.transition_original=originals
