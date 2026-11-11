@@ -1,12 +1,12 @@
 # PetBar — SMN avatar HP / TP
 
-> **Development status, November 11, 2026:** Current testing branch: [`dev/tp-fill-only-blink-2026-11-11`](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/tp-fill-only-blink-2026-11-11) — **v0.4.1-test4b**. Corrects Test 4's unintended capsule/background flashing. Only the completed TP foreground fill now blinks; the static shell and trough retain their opacity. **The correction is not yet tested in FFXI.** Earlier development branches and `main` remain unchanged.
+> **Development status, November 11, 2026:** Current testing branch: [`dev/summon-lifecycle-guard-2026-11-11`](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/summon-lifecycle-guard-2026-11-11) — **v0.4.2-test4c**. Responds to an intermittent user-observed **false Carbuncle death/ghost-hit and missing HUD after summoning**. This branch preserves the successful TP foreground-only blink and adds conservative summon/HP/visibility validation. **Test 4c is not yet verified in-game.** Previous branches and `main` remain unchanged.
 
-PetBar Test 4 is a **standalone Windower 4 addon** for Summoner avatars and elemental spirits. It is an independent companion to EnemyBar2, not an EnemyBar2 patch or runtime dependency.
+PetBar Test 4c is a **standalone Windower 4 addon** for Summoner avatars and elemental spirits. It is an independent companion to EnemyBar2, not an EnemyBar2 patch or runtime dependency.
 
 ## Installation
 
-From the [PetBar Test 4b branch](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/tp-fill-only-blink-2026-11-11), download its ZIP, extract the archive, and **rename the extracted repository folder to `PetBar`**. Place that full folder (including Lua modules, `assets/ffxi` and documentation) at `Windower4/addons/PetBar/`. Then type `//lua load PetBar`.
+From the [PetBar Test 4c branch](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/summon-lifecycle-guard-2026-11-11), download its ZIP, extract the archive, and **rename the extracted repository folder to `PetBar`**. Place that full folder (including Lua modules, `assets/ffxi` and documentation) at `Windower4/addons/PetBar/`. Then type `//lua load PetBar`.
 
 PetBar is now its own GitHub repository; **do not** merge its files into the existing `enemybar2` addon folder. No change is needed to EnemyBar2, XIVCrossbar, or Trust.
 
@@ -18,7 +18,7 @@ PetBar is now its own GitHub repository; **do not** merge its files into the exi
 - `vertical` (default): TP immediately beneath HP. `horizontal`: HP and TP side by side. Both start equal width but can be independently sized or offset. **HP gauge sprites draw above TP gauge sprites** when the two overlap.
 - Avatar name and HP% just below the bars in EnemyBar2-style italic Arial; **numeric TP without a redundant `TP` label** appears at the right end of the same caption row.
 - SMN avatars **and all eight elemental spirits**. BST pets, wyverns, automatons and unrelated pets remain excluded.
-- New summons fade in, and **all departures use the same normal-color fade-out**, whether the pet dies, is released or otherwise disappears. No special white release or death treatment. The exit snapshot keeps the last name/HP/TP until fully faded; cutscenes, zoning, logout and unload still clear immediately. TP comes only from verified local packets; unknown TP displays `--`.
+- New summons fade in **only after a valid positive HP reading**; brief zero-HP packets or missing entity lookups during summoning are not treated as deaths. Death requires an established live summon with sustained 0% HP (~0.35s); absence must persist ~0.40s before departure. A positive HP reading clears the previous death/fade quarantine for that summon ID. **All real departures use the same normal-color fade-out**, whether the pet dies, is released or otherwise disappears. No special white release or death treatment. The exit snapshot keeps the last name/HP/TP until fully faded; cutscenes, zoning, logout and unload still clear immediately. TP comes only from verified local packets; unknown TP displays `--`.
 - Settings persist separately per client via Windower config. Default x is centered relative to UI width, default y is near the lower part of the UI. Personal saved position wins. Ctrl+drag snaps to 10px; left mouse release saves.
 
 `//pb scale` scales width, gap and caption font. The native gauge remains 12px high in Test 4 to preserve its artwork. Local offsets are independent of the whole-HUD drag position.
@@ -74,6 +74,8 @@ Typical fade durations are **0.24 seconds to appear and 0.40 seconds to depart**
 
 Flash period commands accept 0.1–5 seconds for a **complete visible/invisible cycle**, with an instantaneous switch halfway through. No TP flash occurs below 1,000. The legacy `tp_flash_target` entry (including `black`) may remain in your old XML but is ignored. New period keys are `tp_flash_1000`, `tp_flash_2000`, and `tp_flash_3000`; changing them never resets unrelated character-specific settings.
 
+Run `//pb debug on` then `//pb status` to see whether a summon is awaiting positive HP, has a provisional zero/missing reading, or is still faded. Debug messages announce when the addon waits to initialize a summon, accepts it, or confirms a departure. There are no new gameplay commands or new saved settings.
+
 Other commands include `//pb status`, `//pb show|hide|auto`, `//pb preview off`, `//pb gap <0..40>`, `//pb scale <0.65..2>`, `//pb fontsize <8..24>`, `//pb resetpos`, `//pb lock|unlock`, `//pb debug on|off`, `//pb save`, `//pb restart` and `//pb unload`.
 
 
@@ -85,6 +87,7 @@ BarFiller2 and XIVParty xi_select informed design; their runtime modules are not
 
 ## Cumulative changelog
 
+- **2026-11-11 — SMN Test 4c (lifecycle guard; in-game verification pending):** Repair a user-observed intermittent Carbuncle false death/HP ghost and invisible PetBar after summons. Ignore provisional 0% HP during acquisition; debounce subsequent zero HP (0.35s) and missing pet entity (0.40s); prevent single zero-HP packets from animating a fatal hit; permit a formerly faded summon ID to be recognized again when its HP becomes positive; reject stale pet targets when the owner's pet index is zero. Add diagnostic status and regression tests. No changes to TP flashing, native layering, colors, fade style, widths, saved settings, or Cioara's appearance.
 - **2026-11-11 — SMN Test 4b (live verification pending):** Correct 1000/2000/3000 TP alpha blink to affect the **foreground fill only**, leaving the gold/native capsule and recessed background fixed. Regular whole-HUD summon/departure fade is unchanged. Added focused regression assertions for fill, both capsule end caps, recessed trough alpha, and simultaneous pet fade. No changes to saved appearance, Cioara offsets or TP timing controls.
 - **2026-11-05 — SMN Test 4 (unverified):** All pet exits share one normal-color fade (no white release); retired release-only detector; HP bar sprites now draw after/above TP sprites; completed TP underlay blinks between 100% and 0% opacity without color/brightness pulses; the 3000 TP bar also blinks completely transparent rather than flashing black/white; adjustable per-threshold full-cycle period via `//pb tpflashperiod` (defaults 0.8s/0.4s/0.3s); preserve existing XML appearance settings, offsets, widths and HP animations. Includes updated regression tests. Previous Test 3 behavior is recorded below as history.
 - **2026-11-04 — SMN Test 3 (unverified):** Live fade-in on summon, normal death/missing fade, conditional white-release fade across both bars and text/strokes, snapshot preservation through exits and preview cleanup, commands `//pb preview death`, `//pb preview release`, `//pb release`. Removed redundant `TP` text prefix while keeping the TP number and its independent offset. Includes conservative Windower 0x01A Release hint (PetCommand resource ID 90), pure transition model and mocked-entrypoint tests. No SMN-HUD artwork or Rage/Ward timer assets in this test.
