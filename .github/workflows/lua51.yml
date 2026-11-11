@@ -8,6 +8,7 @@ on:
       - 'dev/tp-alpha-flash-and-zorder-2026-11-05'
       - 'dev/tp-fill-only-blink-2026-11-11'
       - 'dev/summon-lifecycle-guard-2026-11-11'
+      - 'dev/tp-independent-alphas-2026-11-11'
   workflow_dispatch:
 
 jobs:
