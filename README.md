@@ -1,12 +1,12 @@
 # PetBar — SMN avatar HP / TP
 
-> **Development status, November 11, 2026:** Current testing branch: [`dev/summon-lifecycle-guard-2026-11-11`](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/summon-lifecycle-guard-2026-11-11) — **v0.4.2-test4c**. Responds to an intermittent user-observed **false Carbuncle death/ghost-hit and missing HUD after summoning**. This branch preserves the successful TP foreground-only blink and adds conservative summon/HP/visibility validation. **Test 4c is not yet verified in-game.** Previous branches and `main` remain unchanged.
+> **Development status, November 11, 2026:** Current testing branch: [`dev/tp-independent-alphas-2026-11-11`](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/tp-independent-alphas-2026-11-11) — **v0.4.3-test4d**. Adds separately configurable opacity for the flashing base TP fill and the brighter cyan overlay. Keeps the Test 4c summon-state guard and the existing gold capsule, background, flash timing and saved layout unchanged. **This new alpha feature has not been tested in-game.** Previous development branches and `main` remain unchanged.
 
-PetBar Test 4c is a **standalone Windower 4 addon** for Summoner avatars and elemental spirits. It is an independent companion to EnemyBar2, not an EnemyBar2 patch or runtime dependency.
+PetBar Test 4d is a **standalone Windower 4 addon** for Summoner avatars and elemental spirits. It is an independent companion to EnemyBar2, not an EnemyBar2 patch or runtime dependency.
 
 ## Installation
 
-From the [PetBar Test 4c branch](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/summon-lifecycle-guard-2026-11-11), download its ZIP, extract the archive, and **rename the extracted repository folder to `PetBar`**. Place that full folder (including Lua modules, `assets/ffxi` and documentation) at `Windower4/addons/PetBar/`. Then type `//lua load PetBar`.
+From the [PetBar Test 4d branch](https://github.com/rerorriM-Mirrorer/PetBar/tree/dev/tp-independent-alphas-2026-11-11), download its ZIP, extract the archive, and **rename the extracted repository folder to `PetBar`**. Place that full folder (including Lua modules, `assets/ffxi` and documentation) at `Windower4/addons/PetBar/`. Then type `//lua load PetBar`.
 
 PetBar is now its own GitHub repository; **do not** merge its files into the existing `enemybar2` addon folder. No change is needed to EnemyBar2, XIVCrossbar, or Trust.
 
@@ -14,7 +14,7 @@ PetBar is now its own GitHub repository; **do not** merge its files into the exi
 
 - HP: pink, native EnemyBar2 texture and animation (damage trail, healing, detached large-hit ghost, impact shaking, low-health pulse and finishing spark).
 - TP: from 0–999, a steady blue fill. At **1,000**, the full underlying bar begins alternating between **100% opacity and 0% opacity**, with a slightly brighter **93.3%-opaque** blue overlay filling toward 2,000. At **2,000**, the underlying blink becomes faster and the overlay restarts in brighter cyan. At **3,000**, the overlay hides and the single full-width blue **fill** alternates between visible and transparent, **while the native capsule and recessed trough remain visible and unchanged at every TP threshold**. Only the filled foreground blinks: not its frame, background, or independent cyan overlay. **No brightness/color pulsing, no black/white color flashes.** TP colors are provisional and await in-game comparison.
-- Spending TP snaps/rebases the fill without damage shake or ghosts; each new TP gain uses a blue recovery-style highlight.
+- Spending TP snaps/rebases the fill without damage shake or ghosts; each new TP gain uses a blue recovery-style highlight. Both **under** (flashing base) and **over** (brighter overlay) fills now have independent saved 0–255 alpha settings. The frame, trough/background, and pet fade remain independent.
 - `vertical` (default): TP immediately beneath HP. `horizontal`: HP and TP side by side. Both start equal width but can be independently sized or offset. **HP gauge sprites draw above TP gauge sprites** when the two overlap.
 - Avatar name and HP% just below the bars in EnemyBar2-style italic Arial; **numeric TP without a redundant `TP` label** appears at the right end of the same caption row.
 - SMN avatars **and all eight elemental spirits**. BST pets, wyverns, automatons and unrelated pets remain excluded.
@@ -57,7 +57,14 @@ To inspect the progressive flashing without waiting for battle TP:
 //pb tpflashperiod 2000 0.4  -- 2000-2999 TP: 0.4s per full cycle
 //pb tpflashperiod 3000 0.3  -- 3000 TP: 0.3s per full cycle
 //pb tpflashperiod all 0.5   -- Use one period at every threshold
+//pb tpalpha                  -- Report both fill alphas
+//pb tpalpha under 170        -- Soften the flashing base blue fill
+//pb tpalpha over 220         -- Slightly soften the brighter cyan fill
+//pb tpalpha reset            -- Restore both: under 255, over 238
+//pb tpalpha reset under      -- Restore only the base fill
 ```
+
+Alpha values are **absolute 0–255 opacity** (0 completely transparent, 255 fully opaque), not percentages. The default flashing underbar reaches 255 when on and 0 when off. If set to 170, it flashes between 170 and 0. The overlay defaults to 238 (~93%) and stays steady while the completed blue fill flashes beneath it. At exactly 3,000 TP there is no separate overlay, so the `under` setting controls the full blue fill. These controls don't change the gold capsule or recessed trough, and the usual whole-HUD entrance/exit fade continues to work. Values save to your current character's settings as `tp_alpha_under` and `tp_alpha_over`; a bare `//pb tpalpha under` or `//pb tpalpha over` reports one.
 
 For HP animations, `//pb preview hit`, `//pb preview heal`, `//pb shake on|off`, and `//pb ghost on|off` remain available.
 
@@ -87,6 +94,7 @@ BarFiller2 and XIVParty xi_select informed design; their runtime modules are not
 
 ## Cumulative changelog
 
+- **2026-11-11 — SMN Test 4d (unverified in-game):** Add saved `//pb tpalpha under <0..255>` and `//pb tpalpha over <0..255>` commands, bare reporting, and `//pb tpalpha reset [under|over]`. Independent absolute alpha on the underlying flashing blue fill (default 255) and brighter cyan upper fill (default 238), combined with existing TP blink and pet fade but not capsule/background transparency. No TP palette, flash cadence, layout, or summon-guard changes. Extend regression tests for resets, 0/255 limits, and native sprite opacity.
 - **2026-11-11 — SMN Test 4c (lifecycle guard; in-game verification pending):** Repair a user-observed intermittent Carbuncle false death/HP ghost and invisible PetBar after summons. Ignore provisional 0% HP during acquisition; debounce subsequent zero HP (0.35s) and missing pet entity (0.40s); prevent single zero-HP packets from animating a fatal hit; permit a formerly faded summon ID to be recognized again when its HP becomes positive; reject stale pet targets when the owner's pet index is zero. Add diagnostic status and regression tests. No changes to TP flashing, native layering, colors, fade style, widths, saved settings, or Cioara's appearance.
 - **2026-11-11 — SMN Test 4b (live verification pending):** Correct 1000/2000/3000 TP alpha blink to affect the **foreground fill only**, leaving the gold/native capsule and recessed background fixed. Regular whole-HUD summon/departure fade is unchanged. Added focused regression assertions for fill, both capsule end caps, recessed trough alpha, and simultaneous pet fade. No changes to saved appearance, Cioara offsets or TP timing controls.
 - **2026-11-05 — SMN Test 4 (unverified):** All pet exits share one normal-color fade (no white release); retired release-only detector; HP bar sprites now draw after/above TP sprites; completed TP underlay blinks between 100% and 0% opacity without color/brightness pulses; the 3000 TP bar also blinks completely transparent rather than flashing black/white; adjustable per-threshold full-cycle period via `//pb tpflashperiod` (defaults 0.8s/0.4s/0.3s); preserve existing XML appearance settings, offsets, widths and HP animations. Includes updated regression tests. Previous Test 3 behavior is recorded below as history.
