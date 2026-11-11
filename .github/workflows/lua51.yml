@@ -7,6 +7,7 @@ on:
       - 'dev/pet-fade-live-test3-2026-11-04'
       - 'dev/tp-alpha-flash-and-zorder-2026-11-05'
       - 'dev/tp-fill-only-blink-2026-11-11'
+      - 'dev/summon-lifecycle-guard-2026-11-11'
   workflow_dispatch:
 
 jobs:
