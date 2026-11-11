@@ -134,7 +134,7 @@ assert(not text_objects[1].visible,
     'initial zero packet must not adopt a dying summon')
 -- The *same* pet ID becomes alive; PetBar should recover immediately.
 mob.hpp=99
-now=1.2
+now=1.25
 events.prerender()
 assert(text_objects[1].visible)
 assert(text_objects[1].content:find('Carbuncle',1,true))
@@ -165,12 +165,12 @@ assert(last_hp_bar.value>.9 and text_objects[1].visible,
 -- One dropped pet lookup does not make the bar exit.
 mob=nil
 player.mob.pet_index=0
-now=1.9
+now=1.99
 events.prerender()
 assert(text_objects[1].visible and text_objects[1].a==255)
 mob={index=51,id=4001,name='Carbuncle',hpp=99}
 player.mob.pet_index=51
-now=2.05
+now=2.15
 events.prerender()
 assert(text_objects[1].a==255,'brief missing lookup must not restart fade')
 -- The optional Release convenience command sends an ability but does not
@@ -178,74 +178,74 @@ assert(text_objects[1].a==255,'brief missing lookup must not restart fade')
 events['addon command']('release')
 assert(outgoing=='input /pet "Release" <me>')
 mob=nil;player.mob.pet_index=0
-now=2.15
+now=2.3
 events.prerender()
 assert(text_objects[1].visible and text_objects[1].a==255)
-now=2.35
+now=2.5
 events.prerender()
 assert(text_objects[1].visible and text_objects[1].a==255,
     'one short disappearance must not start pet fade')
-now=2.6
+now=2.75
 events.prerender()
 assert(text_objects[1].visible,
     'confirmed departure begins a normal-colored fade')
-now=2.8
+now=2.95
 events.prerender()
 assert(text_objects[1].stroke[1]==12 and text_objects[1].stroke[2]==12)
 assert(text_objects[1].rgb[1]==245 and text_objects[1].rgb[2]==238)
 assert(text_objects[1].a>0 and text_objects[1].a<255)
-now=3.1
+now=3.3
 events.prerender()
 assert(not text_objects[1].visible,'completed real departure hides')
 -- Real death is confirmed only after sustained 0% HP on an established pet.
 mob={index=52,id=4002,name='Shiva',hpp=80}
 player.mob.pet_index=52
-now=3.2
+now=3.45
 events.prerender()
-now=3.5
+now=3.75
 events.prerender()
 assert(text_objects[1].stroke[1]==12)
 assert(text_objects[1].rgb[1]==245)
 assert(text_objects[1].content:find('Shiva',1,true))
 mob.hpp=0
-now=3.6
+now=3.9
 events.prerender()
 assert(text_objects[1].visible and last_hp_bar.value>.7)
-now=3.8
+now=4.1
 events.prerender()
 assert(text_objects[1].visible,'zero HP must pass the death grace first')
-now=4.0
+now=4.3
 events.prerender()
 assert(text_objects[1].visible,'confirmed death begins the ordinary fade')
 assert(last_hp_bar.value==0,'real sustained zero should reach HP renderer')
-now=4.2
+now=4.5
 events.prerender()
 assert(text_objects[1].stroke[1]==12)
 assert(text_objects[1].rgb[1]==245)
-now=4.6
+now=4.9
 events.prerender()
 assert(not text_objects[1].visible,'death fade eventually completes')
 -- The old bug quarantined the ID indefinitely. If the entity reports
 -- positive HP again, it must be allowed to appear.
 mob.hpp=86
-now=4.7
+now=5.0
 events.prerender()
 assert(text_objects[1].visible,
     'healthy formerly faded pet ID must recover and render again')
-now=5.0
+now=5.3
 events.prerender()
 assert(text_objects[1].content:find('Shiva',1,true))
 assert(text_objects[1].stroke[1]==12)
 -- Both preview aliases are ordinary color-preserving fades.
-now=5.2
+now=5.55
 events['addon command']('preview','release')
 events.prerender()
-now=5.35
+now=5.7
 events.prerender()
 assert(text_objects[1].stroke[1]==12)
 events['addon command']('preview','death')
 events.prerender()
-now=5.5
+now=5.85
 events.prerender()
 assert(text_objects[1].stroke[1]==12)
 events['addon command']('preview','fade')
