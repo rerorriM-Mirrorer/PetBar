@@ -103,13 +103,18 @@ end
 function methods:set_transition(opacity,whitening)
     self:restore_transition()
     opacity=math.max(0,math.min(1,tonumber(opacity) or 1))
-    -- A completed TP tier blinks its entire native gauge to true 0 alpha.
-    -- Multiply by the regular summon-entry/exit fade; never mix colors.
-    opacity=opacity*(self.blink_alpha or 1)
     whitening=math.max(0,math.min(1,tonumber(whitening) or 0))
-    if opacity==1 and whitening==0 then return end
+    local blink=self.blink_alpha or 1
+    if opacity==1 and whitening==0 and blink==1 then return end
     local originals={}
     for _,name in ipairs(transition_groups) do
+        -- The TP readiness blink belongs to the *foreground fill only*.
+        -- Keep the capsule, recessed background, trail, and decorative effects
+        -- at their normal opacity; the pet enter/exit fade still affects all.
+        local group_opacity=opacity
+        if name=='fill' or name=='critical_fill' then
+            group_opacity=opacity*blink
+        end
         for _,part in ipairs(self[name] or {}) do
             local red,green,blue=part:color()
             local alpha=part:alpha()
@@ -118,7 +123,7 @@ function methods:set_transition(opacity,whitening)
             }
             local result=transition_colors.apply({
                 red=red,green=green,blue=blue,alpha=alpha
-            },{alpha=opacity,whiten=whitening})
+            },{alpha=group_opacity,whiten=whitening})
             part:color(result.red,result.green,result.blue)
             part:alpha(result.alpha)
         end
