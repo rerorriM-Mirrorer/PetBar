@@ -1,5 +1,47 @@
 # PetBar TESTING.md
 
+## Current Development Status — Independent TP Fill Alphas Test 4d (2026-11-11, America/Chicago)
+
+- **Repository and working branch:** `rerorriM-Mirrorer/PetBar`, `dev/tp-independent-alphas-2026-11-11`; forked from Test 4c head `d98ee75d4c38037914a125f5b307083e2ca0fa7c`. Current addon version `0.4.3-test4d`. **Test 4c and `main` remain unchanged.**
+- **User observation and request:** The fully opaque flashing blue TP underbar looks too intense; separately adjust alpha for the blue **under** fill and the brighter cyan **over** fill. Keep the existing static gold capsule/background, foreground-only blink, tier timing, overlay RGB values, HP-over-TP ordering, and regular pet fades. The Test 4c intermittent-Carbuncle lifecycle guard remains in place but has not been independently accepted in-game.
+- **Design/commands:** New persisted `tp_alpha_under` (default **255**) and `tp_alpha_over` (default **238**, ~93.3%). `//pb tpalpha` reports both; `//pb tpalpha under 170` and `//pb tpalpha over 220` adjust independently with immediate live updates; `//pb tpalpha under` / `over` show one; `//pb tpalpha reset` resets both; `//pb tpalpha reset under` or `over` resets one. Accept **integer 0–255** only (0 transparent; 255 fully opaque); invalid input leaves settings unchanged.
+- **Renderer integration:** `ffxiGauge.lua` provides absolute foreground alpha. The original cyan sprite has intrinsic alpha **238**, so the requested value adjusts its fill to that absolute target rather than multiplying by 238/255 again. Preserve animation-intrinsic relative alpha, multiply by the existing binary TP blink and entire-HUD lifecycle fade, and do not change trough, capsule, trail, or decorative effect opacity. When alpha equals the original palette (under 255, over 238), avoid extra per-frame image snapshots. Both TP layers retain their existing 1000/2000/3000 colors/behavior and are not recreated by the command.
+- **Settings compatibility:** Existing client XML and all Cioara appearance values (position, 240px TP width, offsets and EnemyBar2-derived HP animation settings) remain authoritative; only two new optional keys are merged. An immutable default lookup prevents reset changes from accidentally inheriting a mutated config table. Widths, HP effects and pet ID/state logic were not changed.
+- **Regression source:** `tests/tp_renderer_spec.lua` verifies two-layer independent alpha, defaults, zero/255 extremes, unchanged palette, preservation through TP bands, and invalid-value fallback. `tests/gauge_progress_spec.lua` verifies absolute cyan sprite alpha even above intrinsic 238, capsule/background unchanged at 0–255, flash-off reaching zero, pet fade multiplying selected alpha, and default alpha fast path. `tests/fade_entry_spec.lua` verifies command parsing, immediate updates, persistence, per-side reset and rejection of invalid input. **These tests have been authored but do not constitute confirmed Lua 5.1 or live Windower execution.** GitHub CI branch selector updated; confirm outcome separately.
+- **Latest user-confirmed visual baseline:** The user approved Test 4b's foreground-only TP blink, then reported intermittent false Carbuncle deaths, then requested independent opacity controls. The root cause of the false death is a plausible source-established race, not confirmed by captured live packets. Test 4d remains a testing candidate.
+- **Scope:** Only the gauge opacity transform, TP wrapper alpha setters, two keys and `tpalpha` commands, focused regression source, CI, README and TESTING are changed; no asset changes.
+
+### Test 4d live checks
+
+1. Back up `Windower4/addons/PetBar/data` and your current installation. Install the complete Test 4d branch ZIP as `Windower4/addons/PetBar/`, including `WORKFLOW.md`, `TESTING.md`, and `README.md`. Reload and verify `//pb status` reports `v0.4.3-test4d` and `//pb tpalpha` reports `under 255/255 | over 238/255` on an unmodified alpha config. Confirm prior saved layout values remain untouched.
+2. Use `//pb preview tp 1450` and `//pb tpalpha under 170`. The underlying blue bar should flash **170 ↔ 0** instead of 255 ↔ 0. The overlay remains at 238, and the capsule/background do not blink. Try `//pb tpalpha under 100` for a softer effect.
+3. Try `//pb tpalpha over 220` then `over 170` at TP 1450 and 2600. The cyan advancing overlay should change independently without dimming the blue base or changing the flash period. `//pb preview tp 3000` should blink the full-width **under** fill; the **over** control does not display at that point.
+4. Try `//pb tpalpha under 0` (base fill invisible with capsule still visible) and `//pb tpalpha over 255` (cyan fully opaque); restore user preferences afterwards. `//pb tpalpha reset over` should restore 238 without touching under; `//pb tpalpha reset` restores both defaults.
+5. Reload the addon and verify saved per-character alphas persist; check `//pb status`, `//pb preview fade`, actual summon/release and HP loss. Confirm fade-out still affects the **entire** capsule, text stroke and both fills; no additional false Carbuncle death or TP-art regressions.
+6. If controls appear ineffective, enable `//pb debug on` and capture the observed TP stage and alpha values together with screenshots/short clips. Native alpha measurements and actual visual intensity still require live confirmation.
+
+### Test 4d patch register
+
+| Commit | Change |
+| --- | --- |
+| `0701419` | Native gauge absolute foreground alpha while retaining frame, animation and pet fades |
+| `09069d7` | TP renderer separate under/over alpha getters and setters |
+| `67d7a23` | Saved commands, help, status, immediate updates and 0.4.3-test4d version |
+| `f612f95` | Renderer tests for individual alpha and stage transitions |
+| `145fa88`, `7d70714`, `6d96fb7` | Native fill/capsule/flash tests, deterministic timing and native-default fast path |
+| `8ddaeb7` | Avoid unnecessary alpha snapshots at unchanged defaults |
+| `273c147` | Separate immutable reset defaults from config-loaded settings |
+| `2d75548` | Mocked entrypoint commands, validation, persistence and reset tests |
+| `d4ca97f` | README update and cumulative changelog |
+| `2d07400` | Lua 5.1 CI branch targeting |
+| Final documentation commit and published remote head | Report in delivery; never guess a commit's self-hash |
+
+### Historical clarification
+
+Test 4c below remains the record of the Carbuncle race investigation and its mitigations. Earlier Test 4b remains the user-confirmed **foreground-only** TP blinking appearance. Test 4d adds alpha controls on top without revising those previously selected design choices.
+
+---
+
 ## Current Development Status — Summon Lifecycle Guard Test 4c (2026-11-11, America/Chicago)
 
 - **Repository/working branch:** `rerorriM-Mirrorer/PetBar` / `dev/summon-lifecycle-guard-2026-11-11`. Based on the Test 4b head `647e34fee4d5f1cce09536f666e00343622e19c2`. Runtime version `0.4.2-test4c`. The Test 4b and `main` branches remain unchanged; Test 4b is the user-confirmed good **TP foreground-only flash** baseline.
