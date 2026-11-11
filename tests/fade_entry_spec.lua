@@ -85,9 +85,11 @@ package.preload.ffxiGauge=function()
     return m
 end
 package.preload.tpRenderer=function()
-    return {new=function(width)
+    return {new=function(width,options,clock,periods,alphas)
         creation_order[#creation_order+1]='TP'
-        local o={x=0,y=0,value=nil,visible=false}
+        local o={x=0,y=0,value=nil,visible=false,
+            alpha_under=alphas and alphas[1] or 255,
+            alpha_over=alphas and alphas[2] or 238}
         function o:move(x,y) self.x=x;self.y=y end
         function o:set_value(v) self.value=v end
         function o:text_value() return self.value end
@@ -98,6 +100,9 @@ package.preload.tpRenderer=function()
             self.fade_alpha=alpha;self.fade_white=white
         end
         function o:set_flash_periods(values) self.periods=values end
+        function o:set_fill_alphas(under,over)
+            self.alpha_under,self.alpha_over=under,over
+        end
         last_tp_bar=o
         return o
     end}
@@ -120,6 +125,29 @@ events['addon command']('tpflashperiod','3000','0.24')
 assert(last_tp_bar.periods[3]==.24)
 events['addon command']('tpflash','black') -- deprecated, must not modify state.
 assert(last_tp_bar.periods[3]==.24)
+-- Saved alpha controls must apply immediately without rebuilding or moving HP.
+assert(last_tp_bar.alpha_under==255 and last_tp_bar.alpha_over==238)
+events['addon command']('tpalpha')
+events['addon command']('tpalpha','under','150')
+assert(last_tp_bar.alpha_under==150 and last_tp_bar.alpha_over==238)
+assert(saved[#saved].tp_alpha_under==150)
+events['addon command']('tpalpha','over','220')
+assert(last_tp_bar.alpha_under==150 and last_tp_bar.alpha_over==220)
+assert(saved[#saved].tp_alpha_over==220)
+events['addon command']('tpalpha','under','0')
+assert(last_tp_bar.alpha_under==0,'zero is a valid native alpha')
+events['addon command']('tpalpha','over','255')
+assert(last_tp_bar.alpha_over==255)
+events['addon command']('tpalpha','under','255.5')
+assert(last_tp_bar.alpha_under==0,'fractional alpha must be rejected')
+events['addon command']('tpalpha','over','256')
+assert(last_tp_bar.alpha_over==255,'out-of-range alpha must be rejected')
+events['addon command']('tpalpha','reset','over')
+assert(last_tp_bar.alpha_under==0 and last_tp_bar.alpha_over==238)
+events['addon command']('tpalpha','reset')
+assert(last_tp_bar.alpha_under==255 and last_tp_bar.alpha_over==238)
+events['addon command']('tpalpha','under')
+events['addon command']('tpalpha','over')
 -- Carbuncle may exist with provisional 0% HP during the summon handshake.
 mob={index=51,id=4001,name='Carbuncle',hpp=0}
 player.mob.pet_index=51
@@ -253,4 +281,4 @@ events.prerender()
 events['addon command']('unload')
 assert(outgoing=='lua unload PetBar')
 os.clock=real_clock
-print('PetBar summon race guard, shared fades, TP and layout: PASS')
+print('PetBar alpha commands, summon guard, fades and layout: PASS')
