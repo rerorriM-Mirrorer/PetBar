@@ -121,6 +121,10 @@ local shell_alpha=cyan.trough[1].a
 local back_alpha=cyan.trough[2].a
 assert(shell_alpha==238 and back_alpha==119,
     'retain the original transparent overlay sprite and shell source')
+assert(cyan:set_fill_alpha(238))
+cyan:set_transition(1,0)
+assert(cyan.transition_original==nil,
+    'native default alpha should not add extra per-frame sprite work')
 assert(cyan:set_fill_alpha(150))
 cyan:move(0,0)
 cyan:set_transition(1,0)
